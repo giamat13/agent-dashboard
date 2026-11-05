@@ -42,3 +42,7 @@ Copy-Item -Recurse vscode-extension "$env:USERPROFILE\.vscode\extensions\giamat1
 - משתנה סביבה `AGENT_DASH_CONTEXT_MAX`: גודל חלון ההקשר בטוקנים (ברירת מחדל: 200000, או 1000000 למודל 1M).
 
 MIT © GIAMAT13
+
+## Install with Claude
+
+Ask Claude Code: "Install Agent Dashboard following INSTALL-FOR-CLAUDE.md". See [INSTALL-FOR-CLAUDE.md](INSTALL-FOR-CLAUDE.md).
