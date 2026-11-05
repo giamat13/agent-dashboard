@@ -29,3 +29,6 @@
 
 ## 0.3.27
 - While the dashboard panel is open the window title shows only the project name; the previous setting is restored when it closes
+
+## 0.3.28
+- Project-only window title applies only while the dashboard is the active editor; other editors show the normal title

@@ -128,7 +128,7 @@ function wire(webview) {
   });
 }
 
-// While the dashboard panel is open, the window title shows only the project name (not "Claude Dashboard - project").
+// While the dashboard panel is the ACTIVE editor, the window title shows only the project name. With any other editor active the title is the user's own, as usual.
 const TITLE_ONLY_PROJECT = '${rootName}';
 async function applyProjectOnlyTitle() {
   try {
@@ -152,12 +152,14 @@ async function restoreTitle() {
 
 function openPanel() {
   if (panel) return panel.reveal();
-  applyProjectOnlyTitle();
   panel = vscode.window.createWebviewPanel('agentDashboard.panel', 'Claude Dashboard', vscode.ViewColumn.Beside, {
     enableScripts: true,
     retainContextWhenHidden: true,
   });
   wire(panel.webview);
+  const syncTitle = () => { if (panel && panel.active) applyProjectOnlyTitle(); else restoreTitle(); };
+  panel.onDidChangeViewState(syncTitle);
+  syncTitle();
   panel.onDidDispose(() => { panel = undefined; restoreTitle(); });
 }
 
