@@ -119,6 +119,9 @@ switch (cmd) {
       if (flags.eta) setEta(s, flags.eta);
       else { const h = S.histGet(st, 'step:' + r.title + '/' + s.title); if (h) { s.etaSeconds = h; s.etaSetAt = now; fromHist = true; } }
       r.now = flags.now ? String(flags.now) : s.plain || s.title;
+      if (s.etaSeconds && r.etaSeconds && r.etaSetAt) { const tl = r.etaSeconds - (now - r.etaSetAt) / 1000; if (s.etaSeconds > tl + 5) console.log('WARNING: step estimate (' + Math.round(s.etaSeconds / 60) + ' min) is longer than the total time left (' + Math.round(Math.max(0, tl) / 60) + ' min). Raise the total with: eta <time> --total'); }
+      const subSum = (s.subs || []).reduce((a, x) => a + (x.etaSeconds || 0), 0);
+      if (s.etaSeconds && subSum > s.etaSeconds + 5) console.log('WARNING: sub-steps add up to ' + Math.round(subSum / 60) + ' min, more than the step estimate (' + Math.round(s.etaSeconds / 60) + ' min).');
       log(r, 'Step: ' + s.title);
       console.log('Step started: ' + s.title + (flags.eta ? '' : fromHist ? '  (estimate taken from the last run; update it with eta if it differs)' : '  (missing --eta, add an estimated time!)'));
     } else if (sub === 'done' || sub === 'fail') {
@@ -159,6 +162,7 @@ switch (cmd) {
     ensureStep(r);
     const sec = setEta(flags.total ? r : needStep(r), val);
     if (flags.note) r.now = String(flags.note);
+    if (!flags.total && r.etaSeconds && r.etaSetAt) { const tl = r.etaSeconds - (now - r.etaSetAt) / 1000; if (sec > tl + 5) console.log('WARNING: this step (' + Math.round(sec / 60) + ' min) is longer than the total time left (' + Math.round(Math.max(0, tl) / 60) + ' min). Raise the total with: eta <time> --total'); }
     log(r, 'Time estimate updated: ' + Math.round(sec / 60) + ' min' + (flags.total ? ' (total)' : ''));
     r.lastActivityAt = now;
     console.log('ETA updated (' + Math.round(sec / 60) + ' min from now)');

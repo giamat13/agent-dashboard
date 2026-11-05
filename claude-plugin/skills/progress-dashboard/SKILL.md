@@ -46,6 +46,10 @@ Give every sub-step its own estimate: `--subs "Users~2m|Payments~90s|Reports~30s
 
 Every `job start <name>` gets `--eta 3m` (your best guess). Without it the "Running now" card shows only elapsed time. If you forget, the dashboard falls back to the average of finished jobs.
 
+## Estimates must add up
+
+A step estimate must not exceed the total estimate, and sub-steps must not add up to more than their step. The dashboard shows a warning banner and `dash.js` prints WARNING when they do not. When you see it, fix it right away (`eta <time> --total`, or lower the step/sub-step estimate).
+
 ## Estimates on the task list
 
 End every TODO item with an estimate: `Write tests ~5m`, `Build ~2m`. The dashboard shows it (and time left / time taken) on the right of the task in "Claude's tasks".

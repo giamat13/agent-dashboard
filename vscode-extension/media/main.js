@@ -169,7 +169,31 @@
   }
 
   // ---------- freshness ----------
-  function freshHtml(run, now) {
+  // Warn when a part's estimate does not fit inside the bigger estimate that contains it.
+  function estWarnHtml(run, now) {
+    if (!run || run.status !== 'running') return '';
+    const cur = run.steps.find((s) => s.status === 'doing');
+    const total = etaLeft(run, now);
+    const out = [];
+    const fmt = (sec) => dur(Math.max(0, sec));
+    if (total !== null && cur) {
+      const sl = etaLeft(cur, now);
+      if (sl !== null && sl > total + 5) out.push('Step "' + esc(cur.title) + '" is estimated at ' + fmt(sl) + ' but the whole job has only ' + fmt(total) + ' left.');
+      const rest = run.steps.filter((s) => s.status === 'todo' && s.etaSeconds).reduce((a, s) => a + s.etaSeconds, 0);
+      if (rest + Math.max(0, sl || 0) > total + 5 && rest > 0) out.push('The remaining steps add up to ' + fmt(rest + Math.max(0, sl || 0)) + ', more than the ' + fmt(total) + ' left in total.');
+    }
+    if (cur) {
+      const sl = etaLeft(cur, now);
+      const sub = (cur.subs || []).find((x) => x.status === 'doing' && x.etaSeconds && x.etaSetAt);
+      const subLeft = sub ? etaLeft(sub, now) : null;
+      if (sl !== null && subLeft !== null && subLeft > sl + 5) out.push('Sub-step "' + esc(sub.title) + '" needs ' + fmt(subLeft) + ', more than the ' + fmt(sl) + ' left for its step.');
+      const subsSum = (cur.subs || []).filter((x) => x.status !== 'done' && x.etaSeconds).reduce((a, x) => a + x.etaSeconds, 0);
+      if (sl !== null && subsSum > sl + 5) out.push('Sub-steps of "' + esc(cur.title) + '" add up to ' + fmt(subsSum) + ', more than the ' + fmt(sl) + ' left for the step.');
+    }
+    return out.length ? '<div class="banner"><b>Time estimates do not add up.</b> ' + out.join(' ') + ' Claude should fix the estimate.</div>' : '';
+  }
+  function freshHtml(run, now) { return estWarnHtml(run, now) + freshCore(run, now); }
+  function freshCore(run, now) {
     if (!run || run.status !== 'running') return '';
     const idle = now - (run.lastActivityAt || run.startedAt);
     const silentMs = run.wrapped && run.lastOutputAt ? now - run.lastOutputAt : 0;

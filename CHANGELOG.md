@@ -23,3 +23,6 @@
 
 ## 0.3.25
 - Parallel jobs: estimate from --eta, history, or the average of finished jobs; "no estimate yet" shown otherwise
+
+## 0.3.26
+- Warning banner (and CLI WARNING) when a step estimate is longer than the total, or sub-steps add up to more than their step
