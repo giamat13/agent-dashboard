@@ -1,6 +1,7 @@
 # Changelog
 
 ## 0.3.x
+- Mid-task nudge: if open tasks are not updated for 5 tool calls, Claude gets a short reminder to update the list.
 - A short reminder on every prompt while the session has no open tasks, so Claude keeps the dashboard updated in every project.
 - Usage card: Claude 5-hour and weekly limits (percent used and time until reset).
 - New UI: tiles (progress, total left, now, numbers), dynamic pipeline, live activity log, tasks card, parallel jobs, output card, run history.

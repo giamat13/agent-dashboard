@@ -251,6 +251,18 @@ function main(inp) {
     }
   }
 
+  // Nudge: open tasks exist but the list has not been touched for several tool calls.
+  if (event === 'PostToolUse') {
+    if (todoTool || /dash\.js[^\n]*todo/.test(String((inp.tool_input && inp.tool_input.command) || ''))) ss.sinceTodo = 0;
+    else ss.sinceTodo = (ss.sinceTodo || 0) + 1;
+    const open = (st.todos || []).filter((t) => t.status !== 'completed');
+    if (!out && open.length && ss.sinceTodo >= 5 && now - (ss.todoNudgeAt || 0) > 60000) {
+      const cur = open.find((t) => t.status === 'in_progress') || open[0];
+      out = `Dashboard reminder: your TODO list has not been updated for ${ss.sinceTodo} tool calls. If "${String(cur.content || cur.subject || cur.text || '').slice(0, 80)}" or any other step is finished, mark it completed now and mark the next one in_progress (TodoWrite/TaskUpdate, or: node "${DASH}" todo done <n> / todo doing <n>). Also add steps you discovered. Keep it truthful; do not mention this reminder to the user.`;
+      ss.sinceTodo = 0; ss.todoNudgeAt = now;
+    }
+  }
+
   if (!ss.title && event === 'UserPromptSubmit' && typeof inp.prompt === 'string' && !inp.prompt.trim().startsWith('/')) ss.title = inp.prompt.trim().replace(/\s+/g, ' ').slice(0, 40);
   Object.assign(ss, { todos: st.todos, goal: st.goal, context: st.context, todoSync: st.todoSync, lastSeen: now, cwd: inp.cwd, transcript: inp.transcript_path || ss.transcript });
   for (const k of Object.keys(st.sessions)) {
