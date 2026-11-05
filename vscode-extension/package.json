@@ -1,0 +1,36 @@
+{
+  "name": "agent-dashboard",
+  "displayName": "Agent Dashboard",
+  "description": "Live dashboard for Claude: to-dos, context, and long-running scripts with steps and estimated time.",
+  "version": "0.3.17",
+  "publisher": "giamat13",
+  "icon": "media/icon.png",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/GIAMAT13/agent-dashboard" },
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "main": "./extension.js",
+  "activationEvents": ["onStartupFinished"],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [{ "id": "agentDashboard", "title": "Claude Dashboard", "icon": "media/icon.svg" }]
+    },
+    "views": {
+      "agentDashboard": [{ "type": "webview", "id": "agentDashboard.view", "name": "Progress" }]
+    },
+    "commands": [
+      { "command": "agentDashboard.open", "title": "Agent Dashboard: Open in large window" },
+      { "command": "agentDashboard.clear", "title": "Agent Dashboard: Clear history" }
+    ],
+    "configuration": {
+      "title": "Agent Dashboard",
+      "properties": {
+        "agentDashboard.staleMinutes": {
+          "type": "number",
+          "default": 3,
+          "description": "Minutes without an update before showing a 'possibly stuck' warning."
+        }
+      }
+    }
+  }
+}

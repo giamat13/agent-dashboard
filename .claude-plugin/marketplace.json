@@ -1,0 +1,11 @@
+{
+  "name": "agent-dashboard",
+  "owner": { "name": "GIAMAT13" },
+  "plugins": [
+    {
+      "name": "agent-dashboard",
+      "source": "./claude-plugin",
+      "description": "Live VS Code dashboard: to-dos, context, and steps with estimated time for long scripts."
+    }
+  ]
+}
