@@ -58,6 +58,8 @@ Always, in every project, use the dashboard without being asked:
 
 - At the start of any task with 2+ steps, before other work, create the TODO list (TodoWrite/TaskCreate/TaskUpdate). Mark a step in_progress when you start it and completed right after. If those tools do not exist, use `node "<path-to>/agent-dashboard/claude-plugin/scripts/dash.js" todo set "[~] current|next|another"`.
 - Every build, test, install, migration, packaging step or script (do not judge by duration; only bare `ls`/`pwd`/`echo`/`cat`/`git status|log|diff` are exempt): wrap it with `wrap.js` and run the wrapper in the background, or report with `dash.js` (`run start`, `step`, `now`, `eta`, `run done|fail`) and update at every check of the output.
+- Keep the total time left right: whenever the plan changes, run `node "<path-to>/agent-dashboard/claude-plugin/scripts/dash.js" eta <time> --total` (time left for the whole run; the dashboard shows it as "Total left").
+- Keep the dashboard live all the time: after every step change mark the TODO item done/doing, at every output check update now/eta, and never go more than 5 tool calls without a dashboard update.
 - The scripts are always in `<path-to>/agent-dashboard/claude-plugin/scripts/`, even if the SessionStart hook did not inject instructions.
 - Dashboard texts are written in simple English.
 ```

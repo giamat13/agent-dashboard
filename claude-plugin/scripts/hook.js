@@ -191,7 +191,7 @@ function parseGoal(txt) {
 }
 
 const GUIDE =`Agent Dashboard is ON: the user watches a live progress dashboard inside VS Code (TODOs, context, long-running scripts).
-FULLY AUTONOMOUS: never wait to be told. Update it continuously, end every TODO item with an estimate ("item ~5m"), and split every step into small sub-steps YOURSELF, each with its own estimate (--subs "a~2m|b~90s"), then sub start/done as you go.
+FULLY AUTONOMOUS: never wait to be told. Update it continuously, add an estimate to a TODO item only if it helps ("item ~5m", optional), and split every step into small sub-steps YOURSELF, each with its own estimate (--subs "a~2m|b~90s"), then sub start/done as you go. KEEP THE DASHBOARD LIVE ALL THE TIME: mark TODO items done/doing at every step change, update now/eta at every output check, and never go more than 5 tool calls without a dashboard update (TODO, now or eta).
 PREFERRED for real scripts: wrap the command so the dashboard is live and automatic (heartbeat, last output line, auto % and ETA from the output, exit code):
   node "${DASH.replace('dash.js', 'wrap.js')}" --title "<title>" --plain "<plain sentence>" --steps "step1::plain|step2::plain" -- <the real command>
 (run that wrapper command itself in the background). The script may also print lines "@@step 2", "@@sub done", "@@now <text>", "@@eta 5m", "@@job start|done|fail <name>" to drive the dashboard. Stages are always dynamic: name them yourself per project (--steps, or @@step <new name> adds one on the fly). Parallel things: node "${DASH}" job start <name> --eta 3m (ALWAYS give --eta, otherwise the card shows no time left) | job done|fail <name>. Live line: node "${DASH}" log "<text>". User goal (/goal) is shown automatically; set manually with node "${DASH}" goal "<text>".
@@ -201,6 +201,7 @@ Otherwise (manual reporting) for EVERY build, test, install, migration, packagin
   node "${DASH}" sub done [n|all]      # finish a sub-step
   node "${DASH}" now "<what is happening right now, simple words, with counts like '33 of 36 done' or '45%': the progress bar follows them>"
   node "${DASH}" eta 6m                # ESTIMATE FROM NOW for the current step. Update it EVERY time you check on the script.
+  node "${DASH}" eta 6m --total        # TOTAL TIME LEFT for the WHOLE run, from now. Keep it true: give it at run start (run start --eta), and update it whenever the plan changes (a step starts or ends, an estimate changes, steps or sub-steps are added or dropped). If the dashboard or dash.js says it is out of date, fix it at once. If you forget, the dashboard works it out from the steps and says so, but you must still update it.
   node "${DASH}" step done | step fail "<reason>" ; node "${DASH}" run done|fail --summary "<result in plain words>"
 Run the long command in the background, then check its output every 1-2 minutes and update the dashboard (step/sub/now/eta) each time.
 Write all dashboard texts in English, in simple words, no jargon (the user may not be technical). TODOs sync automatically from TodoWrite. If you have NO TodoWrite/TaskCreate tool in this session, you MUST still keep the user's TODO list yourself, for any task with 2+ steps: at the start run node "${DASH}" todo set "[~] current item|next item|another item" ; as you progress run node "${DASH}" todo done <n> / todo doing <n> / todo add "new item" (items marked [x]=done, [~]=in progress). Run these in the background like any command.`;
@@ -251,13 +252,16 @@ function main(inp) {
     if (!throttled && !cmd.includes('dash.js')) {
       if (event === 'PreToolUse' && isShell && LONG_CMD.test(cmd) && !run) {
         out = `Dashboard reminder: this command looks long-running/a test. BEFORE running it, start a dashboard run with steps and ETA:\n${GUIDE}`;
+      } else if (run && S.runLeft(run, now, st.history).source === 'computed' && S.runLeft(run, now, st.history).explicit !== null) {
+        const info = S.runLeft(run, now, st.history);
+        out = `Dashboard reminder: the total time left of run "${run.title}" is out of date (it says ${Math.round(Math.max(0, info.explicit) / 60)} min, the steps still to do add up to ${Math.round(info.computed / 60)} min). Fix it now: node "${DASH}" eta <time left for the WHOLE run> --total`;
       } else if (run && !run.wrapped) {
         const step = run.steps.find((s) => s.status === 'doing');
         const o = step || run;
         const etaAge = o.etaSetAt ? now - o.etaSetAt : Infinity;
         const idle = now - (run.lastActivityAt || run.startedAt);
         if (etaAge > STALE_ETA_MS || idle > STALE_ETA_MS) {
-          out = `Dashboard reminder: run "${run.title}" is active but the user has no fresh update (${Math.round(idle / 60000)} min). Now update it: node "${DASH}" now "<what is happening, simple words>" ; node "${DASH}" eta <time left>${step ? '' : ' ; node "' + DASH + '" step start <n> --eta <time>'} ; node "${DASH}" sub done. Do this each time you check the script.`;
+          out = `Dashboard reminder: run "${run.title}" is active but the user has no fresh update (${Math.round(idle / 60000)} min). Now update it: node "${DASH}" now "<what is happening, simple words>" ; node "${DASH}" eta <time left>${step ? '' : ' ; node "' + DASH + '" step start <n> --eta <time>'} ; node "${DASH}" sub done ; node "${DASH}" eta <time left for the WHOLE run> --total. Do this each time you check the script.`;
         }
       }
       if (out) st.lastReminderAt = now;

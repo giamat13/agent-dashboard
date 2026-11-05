@@ -1,7 +1,7 @@
 (function () {
   const vscode = acquireVsCodeApi();
   const app = document.getElementById('app');
-  let S = null, cfg = { staleMinutes: 3 }, last = '', usage = null;
+  let S = null, cfg = { staleMinutes: 3 }, last = '', usage = null, hist = {};
   const open = new Set();          // ids of <details> the user opened
   const shown = {};                // smoothed percentages (key -> value), so numbers glide instead of jumping
 
@@ -97,26 +97,35 @@
     const cur = r.steps.find((s) => s.status === 'doing');
     return Math.round(((done + (cur ? stepFrac(cur, now) : 0)) / r.steps.length) * 100);
   }
-  const etaLeft = (o, now) => (o && o.etaSetAt ? (o.etaSetAt + o.etaSeconds * 1000 - now) / 1000 : null);
+  const etaLeft = (o, now) => (o && o.etaSetAt && typeof o.etaSeconds === 'number' ? (o.etaSetAt + o.etaSeconds * 1000 - now) / 1000 : null);
 
-  // Total time left: explicit run estimate, else this step's remainder + the remaining steps at the average finished-step duration.
+  // Total time left for the whole run, counted the same way as lib/state.js runLeft (keep both in sync).
+  // Claude's total ("eta TIME --total") is used while it still covers the steps left; otherwise the steps decide.
   function runLeftOf(r, cur, now) {
-    let left = etaLeft(r, now);
-    const stepLeft = etaLeft(cur, now);
-    if (left === null && r.status === 'running' && cur && stepLeft !== null) {
-      const fin = r.steps.filter((s) => s.status === 'done' && s.startedAt && s.endedAt);
-      const avg = fin.length ? fin.reduce((a, s) => a + (s.endedAt - s.startedAt) / 1000, 0) / fin.length : (cur.etaSetAt - cur.startedAt) / 1000 + cur.etaSeconds;
-      left = Math.max(0, stepLeft) + r.steps.filter((s) => s.status === 'todo').length * avg;
+    const explicit = etaLeft(r, now);
+    const fin = r.steps.filter((s) => s.status === 'done' && s.startedAt && s.endedAt);
+    const avg = fin.length ? fin.reduce((a, s) => a + (s.endedAt - s.startedAt) / 1000, 0) / fin.length
+      : cur && typeof cur.etaSeconds === 'number' && cur.etaSetAt && cur.startedAt ? (cur.etaSetAt - cur.startedAt) / 1000 + cur.etaSeconds : null;
+    const unknown = { sec: explicit, source: explicit === null ? null : 'claude', explicit, computed: null };
+    if (!cur && avg === null) return unknown; // nothing started or finished yet: no step-based number
+    let curLeft = 0;
+    if (cur) {
+      const l = etaLeft(cur, now);
+      if (l !== null) curLeft = Math.max(0, l);
+      else if (avg !== null && cur.startedAt) curLeft = Math.max(0, avg - (now - cur.startedAt) / 1000);
+      else return unknown;
     }
-    if (left === null && r.status === 'running') {
-      const fin = r.steps.filter((s) => s.status === 'done' && s.startedAt && s.endedAt);
-      if (fin.length) {
-        const avg = fin.reduce((a, s) => a + (s.endedAt - s.startedAt) / 1000, 0) / fin.length;
-        const curLeft = cur && cur.startedAt ? Math.max(0, avg - (now - cur.startedAt) / 1000) : 0;
-        left = curLeft + r.steps.filter((s) => s.status === 'todo').length * avg;
-      }
+    let todoLeft = 0;
+    for (const s of r.steps) {
+      if (s.status !== 'todo') continue;
+      const h = hist['step:' + r.title + '/' + s.title];
+      const e = typeof s.etaSeconds === 'number' && s.etaSeconds > 0 ? s.etaSeconds : typeof h === 'number' && h > 0 ? h : avg;
+      if (e === null) return unknown;
+      todoLeft += e;
     }
-    return left;
+    const computed = curLeft + todoLeft;
+    if (explicit !== null && explicit > 0 && explicit >= computed - 5) return { sec: explicit, source: 'claude', explicit, computed };
+    return { sec: computed, source: 'computed', explicit, computed };
   }
 
   // ---------- tiles ----------
@@ -136,7 +145,12 @@
 
     // 2: big ETA
     let t2 = '<div class="tile"><div class="k">Total left</div>';
-    if (running && left !== null) t2 += '<div class="v">' + (left > 0 ? '~' + clock(left) : 'over') + '</div><div class="sub">' + (left > 0 ? 'estimated, ticking down' : 'past the estimate, waiting for a new one') + (run.etaFromHistory ? ' · from last run' : '') + '</div>';
+    if (running && left && left.sec !== null) {
+      const sec = left.sec;
+      const how = sec <= 0 ? 'past the estimate, waiting for a new one' : left.source === 'claude' ? 'estimated, ticking down'
+        : left.explicit !== null ? 'total not updated, calculated from the steps' : 'calculated from the steps';
+      t2 += '<div class="v">' + (sec > 0 ? '~' + clock(sec) : 'over') + '</div><div class="sub">' + how + (run.etaFromHistory && left.source === 'claude' ? ' · from last run' : '') + '</div>';
+    }
     else if (running) t2 += '<div class="v dim">—</div><div class="sub">no estimate yet</div>';
     else if (run && run.endedAt) t2 += '<div class="v">' + clock((run.endedAt - run.startedAt) / 1000) + '</div><div class="sub">total time' + (run.status === 'done' ? '' : ' before it ' + run.status) + '</div>';
     else t2 += '<div class="v dim">—</div><div class="sub">idle</div>';
@@ -176,7 +190,10 @@
     const total = etaLeft(run, now);
     const out = [];
     const fmt = (sec) => dur(Math.max(0, sec));
-    if (total !== null && cur) {
+    const calc = runLeftOf(run, cur, now);
+    const staleTotal = calc.source === 'computed' && calc.explicit !== null;
+    if (staleTotal) out.push('The total time left is out of date: it says ' + fmt(calc.explicit) + ', but the steps still to do add up to ' + fmt(calc.computed) + '. The dashboard shows the number from the steps. Claude should set the total: eta TIME --total.');
+    if (!staleTotal && total !== null && cur) {
       const sl = etaLeft(cur, now);
       if (sl !== null && sl > total + 5) out.push('Step "' + esc(cur.title) + '" is estimated at ' + fmt(sl) + ' but the whole job has only ' + fmt(total) + ' left.');
       const rest = run.steps.filter((s) => s.status === 'todo' && s.etaSeconds).reduce((a, s) => a + s.etaSeconds, 0);
@@ -359,6 +376,7 @@
     const now = Date.now();
     const list = S ? sessionList(S) : [];
     const V = S ? view(S, list) : null;
+    hist = (V && V.history) || {};
     const runs = (V && V.runs) || [];
     const active = [...runs].reverse().find((r) => r.status === 'running');
     const live = !!active || (S && now - S.updatedAt < 6000);

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.29
+- Total left: when Claude's total does not cover the steps still to do, the dashboard counts the time from the steps and says so ("total not updated, calculated from the steps"). A step's own estimate counts before its history.
+- Time estimates on TODO items are optional.
+- Claude keeps the dashboard live all the time: TODO, now and eta are updated at every step change and output check.
+
 ## 0.3.x
 - Progress percentage follows counts in status lines ("33 of 36", "45%"); the first step of a run starts automatically.
 - Mid-task nudge: if open tasks are not updated for 5 tool calls, Claude gets a short reminder to update the list.

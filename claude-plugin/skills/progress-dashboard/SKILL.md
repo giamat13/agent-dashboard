@@ -12,9 +12,10 @@ The exact `dash.js` path is printed in the session-start context ("Agent Dashboa
 ## Fully autonomous
 
 The user never has to remind you or give instructions about the dashboard. Do all of this yourself, every time, without being asked:
-- Create the TODO list in your first action, each item ending with an estimate (`Write tests ~5m`).
+- Create the TODO list in your first action. An estimate on a TODO item is optional (`Write tests ~5m`); sub-steps always get one.
 - Break every step into small sub-steps yourself and give each its own estimate (`--subs "a~2m|b~90s"`), then run `sub start` / `sub done` as you go. Sub-steps are never optional.
 - Update the dashboard continuously during the whole task (every step change, every output check, every plan change), not only at the start and end.
+- Keep it live all the time: mark TODO items done/doing at every step change, update now/eta at every output check, and never go more than 5 tool calls without a dashboard update.
 - Fix an estimate (`eta`, `sub start N --eta`) as soon as it proves wrong.
 
 ## Every task with 2+ steps
@@ -34,6 +35,7 @@ Do not decide whether it is "long enough". Wrap it: `node "<path>/wrap.js" --tit
 3. **Run the command in the background** and check its output every 1-2 minutes. At EVERY check, update:
    - `DASH now "Payment checks are running, 40 of 120 passed"` (what is happening, simple words)
    - `DASH eta 4m` (estimate **from now** for the current step; revise it honestly)
+   - `DASH eta 9m --total` (time left for the **whole run**, from now; see "Total time left" below)
    - `DASH sub done` when a sub-step finishes
 4. `DASH step done` (or `step fail "reason"`), then the next step.
 5. Finish: `DASH run done --summary "Everything passed, 120 tests"` or `run fail --summary "..."`.
@@ -50,9 +52,19 @@ Every `job start <name>` gets `--eta 3m` (your best guess). Without it the "Runn
 
 A step estimate must not exceed the total estimate, and sub-steps must not add up to more than their step. The dashboard shows a warning banner and `dash.js` prints WARNING when they do not. When you see it, fix it right away (`eta <time> --total`, or lower the step/sub-step estimate).
 
+## Total time left (the big number)
+
+"Total left" on the dashboard is the time left for the WHOLE run, counted from now. Keep it true yourself:
+- Give it when the run starts: `DASH run start ... --eta 25m`.
+- Update it whenever the plan changes: a step starts or finishes, an estimate changes, a step or sub-step is added or dropped: `DASH eta 9m --total`.
+- Scripts run with wrap.js: the total is set when the script starts. Correct it any time with `DASH eta 9m --total`, or print `@@total 9m` from the script.
+- If dash.js prints `WARNING: the total time left is out of date` or the dashboard says "total not updated", fix it at once.
+
+If your total is missing or too short, the dashboard works it out from the steps and says so. That is a fallback only: you still update the total.
+
 ## Estimates on the task list
 
-End every TODO item with an estimate: `Write tests ~5m`, `Build ~2m`. The dashboard shows it (and time left / time taken) on the right of the task in "Claude's tasks".
+An estimate on a TODO item is optional. Add one when it helps: `Write tests ~5m`, `Build ~2m`. The dashboard shows it (and time left / time taken) on the right of the task in "Claude's tasks".
 
 ## Progress percentage
 

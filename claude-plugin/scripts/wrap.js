@@ -6,7 +6,7 @@
 // Usage: node wrap.js --title "Tests" [--plain "Explanation"] [--steps "a::explain|b"] [--eta 10m] -- npm test
 //
 // הסקריפט עצמו יכול לדווח בעזרת שורות בפלט:
-//   @@step <number|name>   @@sub done|start|add [n|text]   @@now text   @@eta 5m   @@job start|done|fail <name>
+//   @@step <number|name>   @@sub done|start|add [n|text]   @@now text   @@eta 5m   @@total 25m (time left for the whole run)   @@job start|done|fail <name>
 const { spawn } = require('child_process');
 const S = require('./lib/state');
 
@@ -63,7 +63,7 @@ function handleLine(raw) {
   const line = raw.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '').trim();
   if (!line) return;
   lastOutputAt = Date.now();
-  const mk = /^@@(step|sub|now|eta|job)\s*(.*)$/.exec(line);
+  const mk = /^@@(step|sub|now|eta|total|job)\s*(.*)$/.exec(line);
   if (mk) {
     const [, kind, rest] = mk;
     ops.push((r, now, st) => {
@@ -88,6 +88,7 @@ function handleLine(raw) {
       }
       if (kind === 'now') { r.now = rest; manualNow = true; S.logActivity(st, rest, now); }
       else if (kind === 'eta') { const sec = S.parseDuration(rest); const s = curStep(r); if (sec !== null && s) { s.etaSeconds = sec; s.etaSetAt = now; manualEta = true; } }
+      else if (kind === 'total') { const sec = S.parseDuration(rest); if (sec !== null) { r.etaSeconds = sec; r.etaSetAt = now; r.etaFromHistory = false; } }
       else if (kind === 'step') {
         let s = /^\d+$/.test(rest) ? r.steps[+rest - 1] : r.steps.find((x) => x.title.toLowerCase() === rest.toLowerCase());
         if (!s) { s = mkStep(rest); r.steps.push(s); }

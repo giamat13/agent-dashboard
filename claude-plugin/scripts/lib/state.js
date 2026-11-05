@@ -88,4 +88,38 @@ function activeRun(st) {
   return [...st.runs].reverse().find((r) => r.status === 'running' && (!r.session || !st.session || r.session === st.session));
 }
 
-module.exports = { DIR, findRoot, file, load, save, parseDuration, activeRun, logActivity, histGet, histSet };
+// Seconds left for a running run, counted the same way as the dashboard (keep in sync with vscode-extension/media/main.js).
+// Claude's total ("eta <time> --total") is used while it still covers the steps left. When it is missing, expired, or
+// smaller than the steps still to do, the steps decide: the rest of the current step, plus each step still to do
+// (its own estimate, else its history estimate, else the average of the finished steps). explicit = Claude's total, sec = the value shown.
+function runLeft(r, now, hist) {
+  const steps = r.steps || [];
+  const at = (o) => (o && o.etaSetAt && typeof o.etaSeconds === 'number' ? (o.etaSetAt + o.etaSeconds * 1000 - now) / 1000 : null);
+  const explicit = at(r);
+  const cur = steps.find((s) => s.status === 'doing');
+  const fin = steps.filter((s) => s.status === 'done' && s.startedAt && s.endedAt);
+  const avg = fin.length ? fin.reduce((a, s) => a + (s.endedAt - s.startedAt) / 1000, 0) / fin.length
+    : cur && typeof cur.etaSeconds === 'number' && cur.etaSetAt && cur.startedAt ? (cur.etaSetAt - cur.startedAt) / 1000 + cur.etaSeconds : null;
+  const unknown = { sec: explicit, source: explicit === null ? null : 'claude', explicit, computed: null };
+  if (!cur && avg === null) return unknown; // nothing started or finished yet: no step-based number
+  let curLeft = 0;
+  if (cur) {
+    const l = at(cur);
+    if (l !== null) curLeft = Math.max(0, l);
+    else if (avg !== null && cur.startedAt) curLeft = Math.max(0, avg - (now - cur.startedAt) / 1000);
+    else return unknown;
+  }
+  let todoLeft = 0;
+  for (const s of steps) {
+    if (s.status !== 'todo') continue;
+    const h = hist && hist['step:' + r.title + '/' + s.title];
+    const e = typeof s.etaSeconds === 'number' && s.etaSeconds > 0 ? s.etaSeconds : typeof h === 'number' && h > 0 ? h : avg;
+    if (e === null) return unknown;
+    todoLeft += e;
+  }
+  const computed = curLeft + todoLeft;
+  if (explicit !== null && explicit > 0 && explicit >= computed - 5) return { sec: explicit, source: 'claude', explicit, computed };
+  return { sec: computed, source: 'computed', explicit, computed };
+}
+
+module.exports = { DIR, findRoot, file, load, save, parseDuration, activeRun, runLeft, logActivity, histGet, histSet };

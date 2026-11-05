@@ -16,6 +16,7 @@ for (let i = 0; i < argv.length; i++) {
 }
 
 const die = (m) => { console.error(m); process.exit(1); };
+const fmt = (sec) => (sec < 120 ? Math.max(0, Math.round(sec)) + ' s' : Math.round(sec / 60) + ' min');
 const root = S.findRoot(process.cwd());
 const st = S.load(root);
 const now = Date.now();
@@ -84,7 +85,7 @@ switch (cmd) {
       ensureStep(run);
       log(run, 'Started: ' + title);
       st.runs.push(run);
-      console.log('Run started. Next: step start 1 --plain "..." --eta 5m');
+      console.log('Run started. Next: step start 1 --plain "..." --eta 5m. Keep the total time left true: eta <time> --total');
     } else if (sub === 'done' || sub === 'fail') {
       const r = need();
       const s = curStep(r);
@@ -119,7 +120,6 @@ switch (cmd) {
       if (flags.eta) setEta(s, flags.eta);
       else { const h = S.histGet(st, 'step:' + r.title + '/' + s.title); if (h) { s.etaSeconds = h; s.etaSetAt = now; fromHist = true; } }
       r.now = flags.now ? String(flags.now) : s.plain || s.title;
-      if (s.etaSeconds && r.etaSeconds && r.etaSetAt) { const tl = r.etaSeconds - (now - r.etaSetAt) / 1000; if (s.etaSeconds > tl + 5) console.log('WARNING: step estimate (' + Math.round(s.etaSeconds / 60) + ' min) is longer than the total time left (' + Math.round(Math.max(0, tl) / 60) + ' min). Raise the total with: eta <time> --total'); }
       const subSum = (s.subs || []).reduce((a, x) => a + (x.etaSeconds || 0), 0);
       if (s.etaSeconds && subSum > s.etaSeconds + 5) console.log('WARNING: sub-steps add up to ' + Math.round(subSum / 60) + ' min, more than the step estimate (' + Math.round(s.etaSeconds / 60) + ' min).');
       log(r, 'Step: ' + s.title);
@@ -162,10 +162,9 @@ switch (cmd) {
     ensureStep(r);
     const sec = setEta(flags.total ? r : needStep(r), val);
     if (flags.note) r.now = String(flags.note);
-    if (!flags.total && r.etaSeconds && r.etaSetAt) { const tl = r.etaSeconds - (now - r.etaSetAt) / 1000; if (sec > tl + 5) console.log('WARNING: this step (' + Math.round(sec / 60) + ' min) is longer than the total time left (' + Math.round(Math.max(0, tl) / 60) + ' min). Raise the total with: eta <time> --total'); }
     log(r, 'Time estimate updated: ' + Math.round(sec / 60) + ' min' + (flags.total ? ' (total)' : ''));
     r.lastActivityAt = now;
-    console.log('ETA updated (' + Math.round(sec / 60) + ' min from now)');
+    console.log((flags.total ? 'Total time left' : 'ETA') + ' updated (' + Math.round(sec / 60) + ' min from now)');
     break;
   }
   case 'now': {
@@ -273,7 +272,15 @@ switch (cmd) {
     process.exit(0);
   }
   default:
-    die('Usage: dash.js run start|done|fail | step start|done|fail | sub add|start|done | eta <time> | now "..." | log "..." | job add|start|done|fail|live | todo set|add|doing|done | status | reset | clear');
+    die('Usage: dash.js run start|done|fail | step start|done|fail | sub add|start|done | eta <time> [--total] | now "..." | log "..." | job add|start|done|fail|live | todo set|add|doing|done | status | reset | clear');
+}
+
+// The run's total time left must cover the steps still to do. When it does not, the dashboard works it out from the steps
+// and shows that instead, so say it here too: Claude should fix the total.
+const live = S.activeRun(st);
+if (live && ['run', 'step', 'sub', 'eta', 'job', 'now'].includes(cmd)) {
+  const info = S.runLeft(live, now, st.history);
+  if (info.explicit !== null && info.source === 'computed') console.log('WARNING: the total time left is out of date: it says ' + fmt(info.explicit) + ', but the steps still to do add up to ' + fmt(info.computed) + '. Fix it now: eta TIME --total');
 }
 
 // Keep this session's own slice in sync, otherwise the next hook would overwrite todos/goal set here.
