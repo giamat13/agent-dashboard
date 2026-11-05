@@ -42,6 +42,10 @@ Do not decide whether it is "long enough". Wrap it: `node "<path>/wrap.js" --tit
 
 Give every sub-step its own estimate: `--subs "Users~2m|Payments~90s|Reports~30s"` (the part after `~`), or per sub-step `DASH sub start 2 --eta 90s`. In `wrap.js` output: `@@sub add Users~2m|Payments~90s`. Revise with `DASH sub start N --eta <time>` when you learn more. The dashboard shows "~time left" next to the running sub-step and moves the percentage with it.
 
+## Estimates on parallel jobs
+
+Every `job start <name>` gets `--eta 3m` (your best guess). Without it the "Running now" card shows only elapsed time. If you forget, the dashboard falls back to the average of finished jobs.
+
 ## Estimates on the task list
 
 End every TODO item with an estimate: `Write tests ~5m`, `Build ~2m`. The dashboard shows it (and time left / time taken) on the right of the task in "Claude's tasks".

@@ -253,7 +253,12 @@
   function jobsHtml(run, now) {
     const jobs = (run && run.jobs) || [];
     if (!jobs.length) return '';
-    const cards = jobs.map((j) => {
+    const doneT = jobs.filter((x) => x.state === 'done' && x.took > 0).map((x) => x.took);
+    const avgJob = doneT.length ? doneT.reduce((a, b) => a + b, 0) / doneT.length : null;
+    const cards = jobs.map((j0) => {
+      const j = Object.assign({}, j0);
+      let guessed = false;
+      if (j.state === 'run' && !j.estimate && avgJob) { j.estimate = avgJob; guessed = true; }
       const label = { todo: 'Waiting', run: 'Running', done: 'Done', fail: 'Failed' }[j.state] || j.state;
       let h = '<div class="job ' + j.state + '"><div class="jh"><span class="chip ' + j.state + '">' + label + '</span><span class="jn">' + esc(j.name) + '</span></div>';
       if (j.plain) h += '<div class="d">' + esc(j.plain) + '</div>';
@@ -264,7 +269,8 @@
       } else if (j.state === 'done') h += bar(100, 'ok'); else if (j.state === 'fail') h += bar(100, 'bad');
       const meta = [];
       if (el !== undefined && el !== null) meta.push((j.state === 'run' ? 'running ' : 'took ') + dur(el));
-      if (j.state === 'run' && j.estimate) { const l = j.estimate - el; meta.push(l > 0 ? '~' + dur(l) + ' left' : 'past the estimate'); }
+      if (j.state === 'run' && j.estimate) { const l = j.estimate - el; meta.push(l > 0 ? '~' + dur(l) + ' left' + (guessed ? ' (avg of finished jobs)' : '') : 'past the estimate'); }
+      else if (j.state === 'run') meta.push('<span class="muted">no estimate yet</span>');
       if (j.live && (j.live.pass || j.live.fail)) meta.push('<span class="okc">' + j.live.pass + ' passed</span>' + (j.live.fail ? ' · <span class="badc">' + j.live.fail + ' failed</span>' : ''));
       if (meta.length) h += '<div class="meta">' + meta.join(' · ') + '</div>';
       if (j.summary) h += '<div class="meta">' + esc(j.summary) + '</div>';

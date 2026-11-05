@@ -20,3 +20,6 @@
 
 ## 0.3.24
 - Fully autonomous rules: continuous updates, estimates on every task, Claude splits steps into sub-steps itself
+
+## 0.3.25
+- Parallel jobs: estimate from --eta, history, or the average of finished jobs; "no estimate yet" shown otherwise
