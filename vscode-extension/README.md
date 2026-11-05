@@ -16,11 +16,18 @@ This extension only displays data. The companion Claude Code plugin (`agent-dash
 2. Click the **Claude Dashboard** icon in the activity bar (or the status bar item).
 3. Ask Claude to run your tests. Long commands are wrapped automatically.
 
-Commands: `Agent Dashboard: Open in large window`, `Agent Dashboard: Clear history`.
+Commands: `Agent Dashboard: Open in large window`, `Agent Dashboard: Clear history`, `Agent Dashboard: Check for updates`.
 
 Setting: `agentDashboard.staleMinutes` (default 3) — minutes of silence before a "possibly stuck" warning.
 
 MIT © GIAMAT13
+
+## New in 0.4.0
+
+- **Updates**: the extension checks GitHub Releases about 20 seconds after it starts and then every hour, verifies the checksum and installs a newer version. Reload the window afterwards.
+- **GitHub Actions card**: the latest runs of this repository, with the time left for a running workflow. Pages deployments are shown small. Needs the `gh` CLI, logged in.
+- **Local API**: read-only, on 127.0.0.1 only. `dash.js status` shows its address.
+- **Switches** in the settings card: usage estimate and recording, GitHub Actions, local API, and extension and plugin auto-update.
 
 ## New in 0.3.0
 

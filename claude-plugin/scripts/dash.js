@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 'use strict';
 // CLI ש-Claude מריץ כדי לדווח התקדמות ללוח הבקרה ב-VS Code.
+const fs = require('fs');
+const path = require('path');
 const S = require('./lib/state');
+const Settings = require('./lib/settings');
+const USAGE = require('./lib/usage');
 
 const argv = process.argv.slice(2);
 const flags = {};
@@ -20,6 +24,14 @@ const fmt = (sec) => (sec < 120 ? Math.max(0, Math.round(sec)) + ' s' : Math.rou
 const root = S.findRoot(process.cwd());
 const st = S.load(root);
 const now = Date.now();
+
+// The local API address, written by the VS Code extension while it runs (<folder>/.agent-dashboard/api.json).
+function apiLine() {
+  let info = null;
+  try { info = JSON.parse(fs.readFileSync(path.join(root, S.DIR, 'api.json'), 'utf8')); } catch { return 'API: not running (open the dashboard in VS Code, and keep the localApi setting on)'; }
+  try { process.kill(info.pid, 0); } catch { return 'API: not running (the address file is old)'; }
+  return 'API: running at ' + info.url + ' (paths: /api/health, /api/state, /api/usage, /api/github)';
+}
 
 const cur = () => S.activeRun(st);
 const need = () => cur() || die('No active run. First: run start "Title" --plain "Simple explanation" --steps "step1|step2"');
@@ -245,17 +257,89 @@ switch (cmd) {
       return { id: String(i + 1), content: t.trim(), activeForm: t.trim(), status };
     };
     if (sub === 'set') {
+      const prev = new Map((st.todos || []).map((t) => [USAGE.plainText(t), t]));
       st.todos = String(arg || die('Missing items: "a|b|c"')).split('|').filter((x) => x.trim()).map(mk);
+      // Same bookkeeping as the hook: a task that starts or finishes here gets its usage numbers.
+      const cfg = Settings.read();
+      st.todos.forEach((t) => {
+        const o = prev.get(USAGE.plainText(t)) || {};
+        if (t.status === 'in_progress' || t.status === 'completed') {
+          if (o.usageStart) t.usageStart = o.usageStart;
+          if (o.usageEst && t.status === 'in_progress') t.usageEst = o.usageEst;
+        }
+        if (t.status === 'in_progress' && o.status !== 'in_progress') USAGE.startTask(st, t, now, cfg);
+        else if (t.status === 'completed' && o.status && o.status !== 'completed') USAGE.finishTask(st, t, now, cfg);
+      });
     } else if (sub === 'add') {
       st.todos.push(mk(String(arg || die('Missing text')), st.todos.length));
     } else if (['doing', 'done', 'pending'].includes(sub)) {
       const t = st.todos.find((x) => x.id === String(arg));
       if (!t) die('No such TODO: ' + arg);
+      const before = t.status;
       t.status = sub === 'doing' ? 'in_progress' : sub === 'done' ? 'completed' : 'pending';
       if (t.status === 'in_progress') t.startedAt = now; else if (t.status === 'completed') { t.endedAt = now; if (!t.startedAt) t.startedAt = now; }
+      // Plan usage: the same bookkeeping the hook does when a task changes (lib/usage.js).
+      const cfg = Settings.read();
+      if (t.status === 'in_progress' && before !== 'in_progress') USAGE.startTask(st, t, now, cfg);
+      else if (t.status === 'completed' && before !== 'completed') USAGE.finishTask(st, t, now, cfg);
+      else if (t.status === 'pending') { delete t.usageStart; delete t.usageEst; }
     } else if (sub === 'clear') st.todos = [];
     else die('Usage: todo set "a|[~] b|[x] c" | todo doing|done|pending <n> | todo clear');
     console.log('TODOs: ' + st.todos.map((t) => `${t.id}.[${t.status}] ${t.content}`).join(' ; '));
+    break;
+  }
+  case 'settings': {
+    // settings | settings get <key> | settings set <key> on|off   (one file for every project: ~/.agent-dashboard/settings.json)
+    const all = Settings.read();
+    const name = (k) => {
+      if (!Settings.KEYS.includes(k)) die('Unknown setting: ' + k + '. Choose one of: ' + Settings.KEYS.join(', '));
+      return k;
+    };
+    if (!sub) Settings.KEYS.forEach((k) => console.log(k + ': ' + (all[k] ? 'on' : 'off')));
+    else if (sub === 'get') console.log(all[name(arg)] ? 'on' : 'off');
+    else if (sub === 'set') {
+      const v = Settings.parseOnOff(pos[3]);
+      if (v === null) die('Use on or off, e.g. settings set localApi off');
+      Settings.update({ [name(arg)]: v });
+      console.log(arg + ': ' + (v ? 'on' : 'off') + ' (saved)');
+    } else die('settings | settings get <key> | settings set <key> on|off');
+    process.exit(0);
+  }
+  case 'usage': {
+    // usage [--json]: the plan limits right now, and what the task in progress is expected to use.
+    const cfg = Settings.read();
+    const snap = USAGE.current(st, now);
+    const running = (st.todos || []).find((t) => t.status === 'in_progress') || null;
+    const pick = (x) => (x ? { pct: Math.round(x.pct), resetsAt: x.resetsAt || null } : null);
+    const info = {
+      weekly: snap ? pick(snap.weekly) : null,
+      fiveHour: snap ? pick(snap.fiveHour) : null,
+      error: snap ? null : (st.usageSnap && st.usageSnap.error) || 'not read yet',
+      task: running ? USAGE.plainText(running) : null,
+      expected: cfg.usageEstimate && running && running.usageEst ? running.usageEst : null,
+    };
+    if (flags.json) console.log(JSON.stringify(info, null, 1));
+    else {
+      console.log('Weekly limit: ' + (info.weekly ? info.weekly.pct + '%' : '?') + ' · 5-hour limit: ' + (info.fiveHour ? info.fiveHour.pct + '%' : '?') + (info.error ? ' (' + info.error + ')' : ''));
+      if (info.task) {
+        const e = info.expected;
+        console.log('Task in progress: ' + info.task + (e
+          ? ' · expected about +' + e.weekly + '% weekly and +' + e.fiveHour + '% 5-hour (' + (e.kind === 'similar' ? e.n + ' similar task' + (e.n === 1 ? '' : 's') : 'average of ' + e.n + ' task' + (e.n === 1 ? '' : 's')) + ', ' + (e.model || 'any model') + ')'
+          : (cfg.usageEstimate ? ' · no estimate yet' : ' · estimates are off')));
+      }
+    }
+    break;
+  }
+  case 'ci-eta': {
+    // ci-eta "<job name>" <time> | ci-eta clear "<job name>": how long a GitHub Actions job should take. The GitHub card shows it.
+    if (sub === 'clear') { if (st.ciEta) delete st.ciEta[String(arg || '')]; console.log('Cleared: ' + (arg || '')); break; }
+    const job = String(sub || '').trim();
+    if (!job) die('Usage: ci-eta "<job name>" <time>, e.g. ci-eta "build" 4m');
+    const sec = S.parseDuration(arg);
+    if (sec === null) die('Invalid time: ' + arg + ' (examples: 90s, 5m, 1h30m)');
+    st.ciEta = st.ciEta || {};
+    st.ciEta[job] = { sec, at: now };
+    console.log('CI estimate set: ' + job + ' about ' + fmt(sec));
     break;
   }
   case 'clear': {
@@ -266,13 +350,16 @@ switch (cmd) {
   }
   case 'status': {
     const r = cur();
-    if (!r) { console.log('No active run'); process.exit(0); }
-    console.log(r.title + ' | ' + r.status);
-    r.steps.forEach((s, i) => console.log(`${i + 1}. [${s.status}] ${s.title}`));
+    if (!r) console.log('No active run');
+    else {
+      console.log(r.title + ' | ' + r.status);
+      r.steps.forEach((s, i) => console.log(`${i + 1}. [${s.status}] ${s.title}`));
+    }
+    console.log(apiLine());
     process.exit(0);
   }
   default:
-    die('Usage: dash.js run start|done|fail | step start|done|fail | sub add|start|done | eta <time> [--total] | now "..." | log "..." | job add|start|done|fail|live | todo set|add|doing|done | status | reset | clear');
+    die('Usage: dash.js run start|done|fail | step start|done|fail | sub add|start|done | eta <time> [--total] | now "..." | log "..." | job add|start|done|fail|live | todo set|add|doing|done | status | reset | clear | settings [get|set] | usage [--json] | ci-eta "<job>" <time>');
 }
 
 // The run's total time left must cover the steps still to do. When it does not, the dashboard works it out from the steps

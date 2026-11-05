@@ -1,0 +1,80 @@
+# Publishes the VS Code extension as a GitHub release. It runs on every push to main, but only makes a
+# release when vscode-extension/package.json has a version that has no release yet. The release holds the
+# .vsix file and its .sha256 checksum, which the extension's own updater downloads and checks.
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Read the version and check for a release
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          VER=$(node -p "require('./vscode-extension/package.json').version")
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          if gh release view "v$VER" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release v$VER already exists: nothing to do."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Version $VER has no release yet: it will be made."
+          fi
+
+      - name: Run the tests
+        if: steps.version.outputs.exists == 'false'
+        run: |
+          for f in tests/*.test.js; do
+            echo "== $f"
+            node "$f"
+          done
+
+      - name: Package the extension
+        if: steps.version.outputs.exists == 'false'
+        working-directory: vscode-extension
+        env:
+          VER: ${{ steps.version.outputs.version }}
+        run: |
+          npx --yes @vscode/vsce package --allow-missing-repository --skip-license
+          mv "agent-dashboard-$VER.vsix" "$GITHUB_WORKSPACE/"
+
+      - name: Write the checksum
+        if: steps.version.outputs.exists == 'false'
+        env:
+          VER: ${{ steps.version.outputs.version }}
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          sha256sum "agent-dashboard-$VER.vsix" > "agent-dashboard-$VER.vsix.sha256"
+          cat "agent-dashboard-$VER.vsix.sha256"
+
+      - name: Create the release
+        if: steps.version.outputs.exists == 'false'
+        env:
+          VER: ${{ steps.version.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # The notes are this version's section of CHANGELOG.md; without one, GitHub writes them from the commits.
+          awk -v v="$VER" '$0 == "## " v {on = 1; next} /^## / {on = 0} on' CHANGELOG.md > notes.md
+          if [ -s notes.md ]; then NOTES=(--notes-file notes.md); else NOTES=(--generate-notes); fi
+          gh release create "v$VER" "agent-dashboard-$VER.vsix" "agent-dashboard-$VER.vsix.sha256" \
+            --title "Agent Dashboard $VER" "${NOTES[@]}"

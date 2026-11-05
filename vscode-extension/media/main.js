@@ -1,18 +1,32 @@
 (function () {
   const vscode = acquireVsCodeApi();
   const app = document.getElementById('app');
-  let S = null, cfg = { staleMinutes: 3 }, last = '', usage = null, hist = {};
+  let S = null, cfg = { staleMinutes: 3 }, last = '', usage = null, hist = {}, gh = null;
+  let settings = null;             // the on/off settings from the extension (null until the first update)
+  let settingsOpen = false;        // the gear popover
   const open = new Set();          // ids of <details> the user opened
   const shown = {};                // smoothed percentages (key -> value), so numbers glide instead of jumping
 
   window.addEventListener('message', (e) => {
-    if (e.data.type === 'state') { S = e.data.state; cfg = e.data.cfg || cfg; usage = e.data.usage || null; render(); }
+    if (e.data.type === 'state') { S = e.data.state; cfg = e.data.cfg || cfg; usage = e.data.usage || null; settings = e.data.settings || settings; gh = e.data.gh || null; render(); }
   });
   vscode.postMessage({ type: 'ready' });
   setInterval(() => S && render(), 1000);
   app.addEventListener('click', (e) => {
+    if (e.target.closest && e.target.closest('#hist > summary')) e.preventDefault(); // run history stays open
+    if (e.target.closest && e.target.closest('[data-gear]')) { settingsOpen = !settingsOpen; render(); return; }
+    if (settingsOpen && !(e.target.closest && e.target.closest('.pop'))) { settingsOpen = false; render(); } // a click outside closes it
     const tab = e.target.closest && e.target.closest('[data-sid]');
     if (tab) { sel = tab.getAttribute('data-sid'); try { vscode.setState({ sel }); } catch { /* ignore */ } render(); }
+  });
+  // A switch in the settings popover: keep it on screen at once, and tell the extension (it saves the file).
+  app.addEventListener('change', (e) => {
+    const k = e.target && e.target.getAttribute && e.target.getAttribute('data-set');
+    if (!k || !settings) return;
+    const v = !!e.target.checked;
+    settings = Object.assign({}, settings, { [k]: v });
+    vscode.postMessage({ type: 'setSettings', settings: { [k]: v } });
+    render();
   });
   let sel = null;
   try { sel = (vscode.getState() || {}).sel || null; } catch { /* ignore */ }
@@ -22,17 +36,26 @@
     const now = Date.now();
     return Object.values(S.sessions || {}).filter((x) => now - (x.lastSeen || 0) < 3 * 3600e3).sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0));
   }
+  // "All sessions" tab: every session's tasks and every run, with the tasks grouped by session.
+  const ALL = '__all';
   function view(S, list) {
     if (!list.length) return S;
+    if (sel === ALL && list.length > 1) {
+      const groups = list.map((x, i) => ({ id: x.id, title: x.title || ('Session ' + (list.length - i)), goal: x.goal || null, context: x.context || null, todos: x.todos || [] }));
+      return Object.assign({}, S, { todos: [].concat(...groups.map((g) => g.todos)), goal: null, context: null, curSession: ALL, groups, runs: S.runs || [] });
+    }
     const cur = list.find((x) => x.id === sel) || list.find((x) => x.id === S.session) || list[0];
     return Object.assign({}, S, {
-      todos: cur.todos || [], goal: cur.goal || null, context: cur.context || null, curSession: cur.id,
+      todos: cur.todos || [], goal: cur.goal || null, context: cur.context || null, curSession: cur.id, groups: null,
       runs: (S.runs || []).filter((r) => !r.session || r.session === cur.id),
     });
   }
   function tabsHtml(list, curId, now) {
     if (list.length < 2) return '';
-    return '<div class="stabs">' + list.map((x, i) => {
+    const busyAny = list.some((x) => (x.todos || []).some((t) => t.status === 'in_progress'));
+    const all = '<button data-sid="' + ALL + '" class="stab' + (curId === ALL ? ' on' : '') + '" title="Show every session together">' + (busyAny ? '<i></i>' : '') +
+      'All sessions <span class="muted">' + list.length + '</span></button>';
+    return '<div class="stabs">' + all + list.map((x, i) => {
       const busy = (x.todos || []).some((t) => t.status === 'in_progress');
       return '<button data-sid="' + esc(x.id) + '" class="stab' + (x.id === curId ? ' on' : '') + '" title="' + esc(x.title || x.id) + '">' + (busy ? '<i></i>' : '') +
         esc(x.title || ('Session ' + (list.length - i))) + ' <span class="muted">' + (now - (x.lastSeen || 0) < 60000 ? 'now' : hhmm(x.lastSeen)) + '</span></button>';
@@ -74,7 +97,12 @@
     return '<div class="ring"><svg viewBox="0 0 80 80"><circle class="bg" cx="40" cy="40" r="' + R + '"/><circle class="fg" cx="40" cy="40" r="' + R +
       '" style="stroke:' + color + '" stroke-dasharray="' + C.toFixed(1) + '" stroke-dashoffset="' + (C * (1 - pct / 100)).toFixed(1) + '"/></svg><b>' + pct + '%</b></div>';
   }
-  const bar = (pct, cls) => '<div class="bar ' + (cls || '') + '"><i style="width:' + Math.max(0, Math.min(100, pct)) + '%"></i></div>';
+  // plan (optional): { width } = the planned share, drawn as a striped part right after the used part of the bar.
+  const bar = (pct, cls, plan) => {
+    const p = Math.max(0, Math.min(100, pct));
+    const seg = plan && plan.width > 0 ? '<i class="u" style="left:' + p + '%;width:' + Math.min(100 - p, plan.width) + '%"></i>' : '';
+    return '<div class="bar ' + (cls || '') + '"><i style="width:' + p + '%"></i>' + seg + '</div>';
+  };
 
   const stepFrac = (s, now) => {
     if (typeof s.frac === 'number') return Math.min(s.frac, 0.99);
@@ -274,19 +302,34 @@
   }
 
   // ---------- tasks ----------
-  function tasksHtml(S, run, now) {
-    const todos = S.todos || [];
-    let h = '<div class="card"><h3>Claude\'s tasks</h3>';
-    if (!todos.length) return h + '<div class="muted">No tasks yet. When Claude plans multi-step work, the list appears here.</div></div>';
+  // One list of tasks: the finished ones fold away under a summary line, the rest show first.
+  function taskRows(todos, now, key) {
     const done = todos.filter((t) => t.status === 'completed');
     const rest = todos.filter((t) => t.status !== 'completed');
-    h += '<div class="tasksum"><b>' + done.length + ' of ' + todos.length + '</b> <span class="muted">completed</span></div>' + bar(Math.round((done.length / todos.length) * 100), 'ok');
-    if (done.length) h += det('doneTasks') + '<summary>✓ ' + plural(done.length, 'task') + ' done</summary>' + done.map((t) => { const e = splitEst(t.content); return '<div class="todo completed"><span class="cb">✓</span><span class="tx">' + esc(e.text) + '</span>' + todoTime(t, e.est, now) + '</div>'; }).join('') + '</details>';
+    let h = '';
+    if (done.length) h += det('doneTasks' + key) + '<summary>✓ ' + plural(done.length, 'task') + ' done</summary>' + done.map((t) => { const e = splitEst(t.content); return '<div class="todo completed"><span class="cb">✓</span><span class="tx">' + esc(e.text) + '</span>' + todoTime(t, e.est, now) + '</div>'; }).join('') + '</details>';
     h += rest.map((t) => {
       const doing = t.status === 'in_progress';
       const e = splitEst(t.content);
       return '<div class="todo ' + t.status + '"><span class="cb">' + (doing ? '<span class="spin">◐</span>' : '') + '</span><span class="tx">' + esc(doing && t.activeForm ? splitEst(t.activeForm).text : e.text) + '</span>' + todoTime(t, e.est, now) + '</div>';
     }).join('');
+    return h;
+  }
+  // "All sessions": the tasks are grouped by session, with that session's goal under its name.
+  function tasksHtml(V, run, now) {
+    const todos = V.todos || [];
+    const groups = V.groups;
+    let h = '<div class="card"><h3>' + (groups ? 'Claude\'s tasks (all sessions)' : 'Claude\'s tasks') + '</h3>';
+    if (!todos.length) return h + '<div class="muted">No tasks yet. When Claude plans multi-step work, the list appears here.</div></div>';
+    const done = todos.filter((t) => t.status === 'completed');
+    h += '<div class="tasksum"><b>' + done.length + ' of ' + todos.length + '</b> <span class="muted">completed</span></div>' + bar(Math.round((done.length / todos.length) * 100), 'ok');
+    if (!groups) return h + taskRows(todos, now, '') + '</div>';
+    groups.forEach((g, i) => {
+      if (!g.todos.length) return;
+      const gDone = g.todos.filter((t) => t.status === 'completed').length;
+      h += '<div class="grp"><div class="grph">' + esc(g.title) + ' <span class="muted">' + gDone + ' of ' + g.todos.length + '</span></div>' +
+        (g.goal && g.goal.text ? '<div class="muted grpg">🎯 ' + esc(g.goal.text) + '</div>' : '') + taskRows(g.todos, now, 'g' + i) + '</div>';
+    });
     return h + '</div>';
   }
 
@@ -322,6 +365,60 @@
     return '<div class="card"><h3>Running now' + ' <span class="muted">(' + jobs.filter((j) => j.state === 'run').length + ' active)</span></h3><div class="jobs">' + cards + '</div></div>';
   }
 
+  // ---------- GitHub Actions ----------
+  // The runs of this repository, read by the extension with the GitHub CLI (lib/gh.js). GitHub Pages deploys go in a small line at the bottom.
+  const GH_ERRORS = {
+    'gh-missing': 'Install the GitHub CLI (gh) to see your runs here.',
+    'not-logged-in': 'Not logged in to GitHub. Run: gh auth login',
+    'no-remote': 'This folder has no GitHub remote.',
+    'offline': 'GitHub cannot be reached right now. Trying again later.',
+    'failed': 'Could not read the runs. Trying again later.',
+  };
+  const GH_MARK = { success: ['✓', 'ok'], failure: ['✗', 'bad'], cancelled: ['–', 'muted'] };
+  // Seconds left for a running run: its estimate minus the time since it started. null when there is no estimate.
+  function ghLeftSec(r, now) {
+    if (!r.estimateSec || !r.startedAt) return null;
+    return r.estimateSec - (now - Date.parse(r.startedAt)) / 1000;
+  }
+  function ghPagesHtml(p, now) {
+    if (!p) return '';
+    const text = p.status !== 'completed'
+      ? 'GitHub Pages: ' + (p.status === 'queued' ? 'queued' : 'deploying') + '…'
+      : 'GitHub Pages: ' + (p.conclusion === 'success' ? 'deployed' : p.conclusion === 'failure' ? 'deploy failed' : esc(p.conclusion || 'finished')) +
+        (p.at ? ' · ' + ago(now - Date.parse(p.at)) : '');
+    return '<div class="ghpages">' + text + '</div>';
+  }
+  function ghHtml(gh, now) {
+    if (!gh || gh.error === 'off') return '';
+    let h = '<div class="card gh"><h3>GitHub Actions' + (gh.repo ? ' <span class="muted">' + esc(gh.repo) + '</span>' : '') + '</h3>';
+    if (gh.error) return h + '<div class="muted">' + esc(GH_ERRORS[gh.error] || GH_ERRORS.failed) + '</div></div>';
+    if (!gh.running.length) h += '<div class="muted">Nothing running.</div>';
+    h += gh.running.map((r) => {
+      const queued = r.status === 'queued';
+      const el = r.startedAt ? (now - Date.parse(r.startedAt)) / 1000 : null;
+      const left = ghLeftSec(r, now);
+      const f = left === null || el === null ? null : Math.min(0.95, el / Math.max(r.estimateSec, 1));
+      const meta = [];
+      if (el !== null) meta.push((queued ? 'queued ' : 'running ') + dur(Math.max(0, el)));
+      if (left === null) meta.push('<span class="muted">no estimate yet</span>');
+      else meta.push(left > 0 ? '~' + dur(left) + ' left' : 'past the estimate');
+      if (r.estimateFrom === 'claude') meta.push('<span class="muted">Claude\'s estimate</span>');
+      else if (r.estimateFrom === 'history') meta.push('<span class="muted">usual time</span>');
+      return '<div class="job ' + (queued ? 'todo' : 'run') + '"><div class="jh"><span class="chip ' + (queued ? 'todo' : 'run') + '">' + (queued ? 'Queued' : 'Running') +
+        '</span><span class="jn">' + esc(r.workflow || 'Workflow') + '</span></div>' +
+        '<div class="d">' + esc(r.title) + (r.branch ? ' <span class="muted">on ' + esc(r.branch) + '</span>' : '') + '</div>' +
+        bar(f === null ? 100 : Math.round(f * 100), f === null ? 'indet' : '') + '<div class="meta">' + meta.join(' · ') + '</div></div>';
+    }).join('');
+    if (gh.recent.length) {
+      h += '<div class="muted ghlabel">Recent</div>' + gh.recent.map((r) => {
+        const mark = GH_MARK[r.conclusion] || ['•', 'muted'];
+        return '<div class="ghrow"><span class="gc ' + mark[1] + '">' + mark[0] + '</span><span class="gt">' + esc(r.title) + '</span><span class="muted">' +
+          esc(r.workflow) + ' · ' + dur(r.durationSec || 0) + (r.endedAt ? ' · ' + ago(now - Date.parse(r.endedAt)) : '') + '</span></div>';
+      }).join('');
+    }
+    return h + ghPagesHtml(gh.pages, now) + '</div>';
+  }
+
   // ---------- run output ----------
   function outputHtml(run) {
     if (!run) return '';
@@ -344,32 +441,102 @@
     return h + '<div class="meter">' + ring(c.percent, color) + '<div><b>' + num(c.used) + '</b> <span class="muted">of ' + num(c.max) + ' tokens until compact</span><div class="muted">' + hint + '</div></div></div><div class="muted" style="margin-top:8px">' + ac + '</div></div>';
   }
 
+  // "All sessions": each chat's memory, one bar per chat.
+  function allContextHtml(groups) {
+    const h = '<div class="card"><h3>Claude\'s memory in each chat</h3>';
+    const withCtx = groups.filter((g) => g.context && typeof g.context.percent === 'number');
+    if (!withCtx.length) return h + '<div class="muted">Data appears after the next message.</div></div>';
+    return h + withCtx.map((g) => {
+      const p = Math.round(g.context.percent);
+      return '<div class="urow"><div class="uh"><b>' + esc(g.title) + '</b><span>' + p + '%</span></div>' +
+        bar(p, p >= 85 ? 'bad' : p >= 60 ? 'warn' : 'ok') + '<div class="muted">' + num(g.context.used || 0) + ' of ' + num(g.context.max || 0) + ' tokens until compact</div></div>';
+    }).join('') + '</div>';
+  }
+  // "All sessions": runs still going in the other sessions, so none hides behind the one shown.
+  function otherRunsHtml(V, run, now) {
+    if (!V.groups) return '';
+    const others = (V.runs || []).filter((r) => r !== run && r.status === 'running');
+    if (!others.length) return '';
+    return '<div class="others">' + others.map((r) => {
+      const g = V.groups.find((x) => x.id === r.session);
+      const cur = (r.steps || []).find((s) => s.status === 'doing');
+      const p = progress(r, now);
+      const left = runLeftOf(r, cur, now);
+      const eta = left.sec === null ? 'no estimate yet' : left.sec > 0 ? '~' + clock(left.sec) + ' left' : 'past the estimate';
+      return '<div class="other"><span class="chip run">' + esc(g ? g.title : 'Other') + '</span><b>' + esc(r.title) + '</b>' +
+        (p === null ? '' : '<span class="muted">' + p + '%</span>') + '<span class="muted">' + eta + '</span></div>';
+    }).join('') + '</div>';
+  }
+
   function resetDur(sec) {
     if (sec < 86400) return dur(sec);
     const d = Math.floor(sec / 86400), h = Math.round((sec % 86400) / 3600);
     return plural(d, 'day') + (h ? ' ' + plural(h, 'hour') : '');
   }
-  function usageHtml(u, now) {
+  // The planned share of one limit for the task in progress: what similar tasks used, minus what this task has used so far.
+  // Returns the width of the striped part (percent) and its text. null when this task has no usage numbers.
+  function planInfo(t, key, u) {
+    const start = t.usageStart, est = t.usageEst, x = u && u[key];
+    if (!start || typeof start[key] !== 'number' || !x || typeof x.pct !== 'number') return null;
+    if (!est || typeof est[key] !== 'number') return { width: 0, text: 'no data yet' };
+    const used = Math.max(0, x.pct - start[key]);
+    const width = Math.min(Math.max(0, est[key] - used), Math.max(0, 100 - x.pct));
+    const n = est.n || 0;
+    const what = est.kind === 'average' ? 'average of ' + n + (n === 1 ? ' task' : ' tasks') : n + (n === 1 ? ' similar task' : ' similar tasks');
+    const model = est.sameModel === false ? 'other model' : esc(String(est.model || ''));
+    return { width, text: '+~' + Math.round(width) + '% planned (' + what + (model ? ', ' + model : '') + ')' };
+  }
+  // The task in progress that has usage numbers, the newest one (of this session or any other session).
+  function plannedOf(state) {
+    if (!state) return null;
+    let best = null;
+    const lists = [state.todos || []].concat(Object.values(state.sessions || {}).map((x) => (x && x.todos) || []));
+    for (const list of lists) for (const t of list) {
+      if (!t || t.status !== 'in_progress' || !t.usageStart) continue;
+      if (!best || (t.usageStart.at || 0) > (best.usageStart.at || 0)) best = t;
+    }
+    return best;
+  }
+  function usageHtml(u, now, task, showPlan) {
     let h = '<div class="card"><h3>Claude usage limits</h3>';
     if (!u) return h + '<div class="muted">Loading…</div></div>';
     if (u.error) return h + '<div class="muted">' + (u.error === 'not-logged-in' ? 'Not signed in to Claude Code (subscription login needed).' : 'Could not read usage (' + esc(u.error) + ').') + '</div></div>';
-    const row = (label, x) => {
+    const row = (label, key, x) => {
       if (!x) return '';
       const p = Math.round(x.pct);
       const cls = p >= 90 ? 'bad' : p >= 70 ? 'warn' : 'ok';
       const reset = x.resetsAt ? (x.resetsAt > now ? 'resets in ' + resetDur((x.resetsAt - now) / 1000) : 'resetting…') : '';
-      return '<div class="urow"><div class="uh"><b>' + label + '</b><span>' + p + '%</span></div>' + bar(p, cls) + (reset ? '<div class="meta">' + reset + '</div>' : '') + '</div>';
+      const pl = showPlan && task ? planInfo(task, key, u) : null;
+      const meta = [reset, pl ? pl.text : ''].filter(Boolean).join(' · ');
+      return '<div class="urow"><div class="uh"><b>' + label + '</b><span>' + p + '%</span></div>' + bar(p, cls, pl) + (meta ? '<div class="meta">' + meta + '</div>' : '') + '</div>';
     };
-    const body = row('5-hour limit', u.fiveHour) + row('Weekly limit', u.weekly) + row('Weekly Opus', u.opus);
+    const body = row('5-hour limit', 'fiveHour', u.fiveHour) + row('Weekly limit', 'weekly', u.weekly) + row('Weekly Opus', 'opus', u.opus);
     return h + (body || '<div class="muted">No limits reported for this plan.</div>') + '</div>';
   }
 
-  function historyHtml(runs, lastRun, now) {
+  function historyHtml(runs, lastRun, now, groups) {
     const older = runs.filter((r) => r !== lastRun).reverse();
     if (!older.length) return '';
-    return '<div class="card">' + det('hist') + '<summary>Run history (' + older.length + ')</summary>' +
+    const sessionOf = (r) => { const g = groups && groups.find((x) => x.id === r.session); return g ? ' · ' + esc(g.title) : ''; };
+    return '<div class="card"><details id="hist" open><summary>Run history (' + older.length + ')</summary>' +
       older.map((r) => '<div class="hrow"><span class="chip ' + (r.status === 'done' ? 'done' : r.status === 'running' ? 'run' : 'fail') + '">' + ({ done: 'Done', failed: 'Failed', stopped: 'Stopped', running: 'Running' }[r.status]) + '</span> ' + esc(r.title) +
-        '<div class="muted">' + hhmm(r.startedAt) + ' · ' + dur(((r.endedAt || now) - r.startedAt) / 1000) + (r.summary ? ' · ' + esc(r.summary) : '') + '</div></div>').join('') + '</details></div>';
+        '<div class="muted">' + hhmm(r.startedAt) + ' · ' + dur(((r.endedAt || now) - r.startedAt) / 1000) + sessionOf(r) + (r.summary ? ' · ' + esc(r.summary) : '') + '</div></div>').join('') + '</details></div>';
+  }
+
+  // Settings popover (opened by the gear in the header). Each switch is saved for this computer.
+  const SETTING_ROWS = [
+    ['usageEstimate', 'Planned usage on the limit bars', 'Shows how much of a limit the similar tasks are expected to use.'],
+    ['usageRecord', 'Remember usage for each task', 'Records how much of a limit each finished task used, for future estimates.'],
+    ['githubActions', 'GitHub Actions card', 'Shows your GitHub workflow runs and how long they still need.'],
+    ['localApi', 'Local API', 'Lets other tools read this dashboard. This computer only.'],
+    ['extensionAutoUpdate', 'Update this extension by itself', 'Checks GitHub Releases about once an hour.'],
+    ['pluginAutoUpdate', 'Update the Claude plugin by itself', 'Checks about once a day when Claude starts a session.'],
+  ];
+  function settingsHtml() {
+    if (!settingsOpen || !settings) return '';
+    return '<div class="pop" role="dialog" aria-label="Settings"><div class="poph"><b>Settings</b><span class="muted">saved on this computer</span></div>' +
+      SETTING_ROWS.map(([k, t, d]) => '<label class="prow"><input type="checkbox" data-set="' + k + '"' + (settings[k] !== false ? ' checked' : '') +
+        '><span><b>' + t + '</b><span class="muted">' + d + '</span></span></label>').join('') + '</div>';
   }
 
   function render() {
@@ -382,17 +549,18 @@
     const live = !!active || (S && now - S.updatedAt < 6000);
     let h = '<div class="top"><div class="logo"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5" opacity=".4"/><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5 8.5 8.5 0 0 1-3.2 6.6"/><path d="M8.6 12.4l2.4 2.5 4.4-5.3"/></svg></div>' +
       '<div class="ttl"><h1>Claude Dashboard</h1><div class="muted">Live progress of Claude\'s work and your scripts</div></div>' +
-      '<span class="pill ' + (live ? 'live' : '') + '"><i></i>' + (active ? 'Running' : live ? 'Active' : 'Idle') + '</span></div>';
+      '<span class="pill ' + (live ? 'live' : '') + '"><i></i>' + (active ? 'Running' : live ? 'Active' : 'Idle') + '</span>' +
+      '<button class="gear" data-gear title="Settings" aria-label="Settings" aria-expanded="' + (settingsOpen ? 'true' : 'false') + '">⚙</button>' + settingsHtml() + '</div>';
     if (!S) {
       h += '<div class="card empty"><div class="big">📡</div><b>Waiting for data</b><div class="muted">Make sure the Claude plugin is installed, then send Claude a message in this folder.</div></div>';
     } else {
       const run = active || runs[runs.length - 1] || null;
       h += tabsHtml(list, V.curSession, now);
       if (V.goal && V.goal.text && /[\p{L}\p{N}]/u.test(V.goal.text)) h += '<div class="goal"><span class="gk">🎯 Goal</span><span class="gt">' + esc(V.goal.text) + '</span></div>';
-      h += freshHtml(run, now) + tilesHtml(V, run, now) + pipelineHtml(run, now);
+      h += freshHtml(run, now) + tilesHtml(V, run, now) + otherRunsHtml(V, run, now) + pipelineHtml(run, now);
       h += '<div class="cols"><div class="col">' + activityHtml(V, run, now) + tasksHtml(V, run, now) + '</div>' +
-        '<div class="col">' + jobsHtml(run, now) + outputHtml(run) + '</div>' +
-        '<div class="col">' + usageHtml(usage, now) + contextHtml(V.context) + historyHtml(runs, run, now) + '</div></div>';
+        '<div class="col">' + jobsHtml(run, now) + ghHtml(gh, now) + outputHtml(run) + '</div>' +
+        '<div class="col">' + usageHtml(usage, now, plannedOf(S), !settings || settings.usageEstimate !== false) + (V.groups ? allContextHtml(V.groups) : contextHtml(V.context)) + historyHtml(runs, run, now, V.groups) + '</div></div>';
       h += '<div class="foot">Updated ' + hhmm(S.updatedAt) + '</div>';
     }
     if (h !== last) { last = h; app.innerHTML = h; }

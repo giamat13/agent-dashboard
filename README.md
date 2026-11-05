@@ -9,10 +9,10 @@
 
 ## התקנה
 
-תוסף VS Code (בלי בנייה):
+תוסף VS Code: מורידים את `agent-dashboard-<גרסה>.vsix` מעמוד ה-Releases של הריפו ומתקינים:
 
-```powershell
-Copy-Item -Recurse vscode-extension "$env:USERPROFILE\.vscode\extensions\giamat13.agent-dashboard-0.1.0"
+```
+code --install-extension agent-dashboard-<גרסה>.vsix --force
 ```
 
 ואז Reload Window.
@@ -20,11 +20,17 @@ Copy-Item -Recurse vscode-extension "$env:USERPROFILE\.vscode\extensions\giamat1
 תוסף Claude:
 
 ```
-/plugin marketplace add <נתיב לתיקייה הזו>
+/plugin marketplace add GIAMAT13/agent-dashboard
 /plugin install agent-dashboard@agent-dashboard
 ```
 
-(או לבדיקה: `claude --plugin-dir <נתיב>\claude-plugin`)
+(עותק מקומי בפיתוח: `/plugin marketplace add <נתיב לתיקייה הזו>`, או `claude --plugin-dir <נתיב>\claude-plugin`.)
+
+## עדכונים
+
+- התוסף של VS Code בודק עדכונים ב-GitHub Releases כ-20 שניות אחרי הפתיחה ואז כל שעה, בודק את ה-checksum ומתקין. אחרי עדכון: Reload Window. בדיקה ידנית: `Agent Dashboard: Check for updates`.
+- תוסף Claude מתעדכן פעם ביום ברקע. השיחה הבאה אחרי עדכון מודיעה על כך; צריך להפעיל מחדש את Claude Code.
+- מתגים (כרטיס ההגדרות, גלגל השיניים, או `~/.agent-dashboard/settings.json`): `extensionAutoUpdate`, `pluginAutoUpdate`, `githubActions`, `localApi`, `usageEstimate`, `usageRecord`.
 
 ## מה רואים
 
@@ -35,6 +41,11 @@ Copy-Item -Recurse vscode-extension "$env:USERPROFILE\.vscode\extensions\giamat1
 ## איך Claude מדווח
 
 ה-hook מזריק ל-Claude הוראות בתחילת שיחה, ומזכיר לעדכן (`eta`, `now`, `sub done`) כשהוא מריץ משהו ארוך או כשעבר זמן בלי עדכון. פקודות: `run start|done|fail`, `step start|done|fail`, `sub add|start|done`, `eta`, `now`, `log`, `status`, `clear`.
+
+## API מקומי ו-GitHub
+
+- `dash.js status` מציג את הכתובת של ה-API המקומי: 127.0.0.1 בלבד, לקריאה בלבד. הכתובת נשמרת ב-`.agent-dashboard/api.json`.
+- כרטיס GitHub Actions מציג את ההרצות האחרונות של הריפו (דורש `gh` מחובר). `dash.js ci-eta "<workflow>" <זמן>` קובע זמן משוער ל-workflow מסוים.
 
 ## הגדרות
 

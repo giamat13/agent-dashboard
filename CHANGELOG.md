@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.4.0
+- The VS Code extension updates itself: about 20 seconds after it starts, and then every hour, it checks GitHub Releases, verifies the file's checksum and installs a newer version. Reload the window to use it. "Agent Dashboard: Check for updates" checks now.
+- The Claude plugin updates itself once a day in the background. The first session after an update says so; restart Claude Code to use it.
+- GitHub Actions card: the latest runs of this repository, with the time left for a running workflow. GitHub Pages runs are shown small. `dash.js ci-eta "<workflow>" <time>` sets the usual time of one workflow.
+- Local API on 127.0.0.1 only, read-only, for other tools. `dash.js status` shows its address. Requests from web pages (with an Origin header) and other host names are refused.
+- Switches in the settings card: GitHub Actions, local API, extension auto-update and plugin auto-update (saved in `~/.agent-dashboard/settings.json`).
+- Release workflow: on every push to main, a new extension version is published as a GitHub release with the `.vsix` and its checksum.
+
+## 0.3.31
+- Planned usage: when a task starts, the dashboard estimates how much of the 5-hour and weekly limits it will use, from similar finished tasks (same model first). The planned part is a striped piece on the limit bars, with its size in the text.
+- Each finished task is recorded with the usage it used, so the estimate gets better over time. Two switches in the settings card turn the estimate and the recording off separately.
+- `dash.js usage` shows the limits, the running task and its expected usage (`--json` for scripts).
+- `dash.js ci-eta "<job>" <time>` sets an expected time for a CI job (`ci-eta clear "<job>"` removes it).
+- Settings card (gear button): switches saved in `~/.agent-dashboard/settings.json`, shared by the extension and the plugin.
+
+## 0.3.30
+- "All sessions" tab: follow every Claude session of this project at once. Tasks are grouped by session (with that session's goal), every running run is listed, and each chat's memory is shown side by side.
+- Run history stays open.
+- The packaged extension no longer includes log files.
+
 ## 0.3.29
 - Total left: when Claude's total does not cover the steps still to do, the dashboard counts the time from the steps and says so ("total not updated, calculated from the steps"). A step's own estimate counts before its history.
 - Time estimates on TODO items are optional.

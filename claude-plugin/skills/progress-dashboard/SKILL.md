@@ -48,6 +48,11 @@ Give every sub-step its own estimate: `--subs "Users~2m|Payments~90s|Reports~30s
 
 Every `job start <name>` gets `--eta 3m` (your best guess). Without it the "Running now" card shows only elapsed time. If you forget, the dashboard falls back to the average of finished jobs.
 
+## GitHub Actions and usage
+
+- A GitHub Actions run gets the usual time of its workflow. If a workflow usually takes a different time, set it: `DASH ci-eta "<workflow name>" 6m`. Remove it with `DASH ci-eta clear "<workflow name>"`. Use the name as GitHub shows it.
+- `DASH usage` prints the Claude limits (5-hour and weekly) and the expected usage of the running task.
+
 ## Estimates must add up
 
 A step estimate must not exceed the total estimate, and sub-steps must not add up to more than their step. The dashboard shows a warning banner and `dash.js` prints WARNING when they do not. When you see it, fix it right away (`eta <time> --total`, or lower the step/sub-step estimate).

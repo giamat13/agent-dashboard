@@ -4,6 +4,9 @@
 const fs = require('fs');
 const path = require('path');
 const S = require('./lib/state');
+const USAGE = require('./lib/usage');
+const Settings = require('./lib/settings');
+const PluginUpdate = require('./lib/plugin-update');
 
 const DASH = path.join(__dirname, 'dash.js').replace(/\\/g, '/');
 const STALE_ETA_MS = 2 * 60 * 1000;
@@ -97,12 +100,20 @@ function readContext(transcript, cwd) {
 
 // Remember when each task started/finished (matched by text without the "~5m" estimate).
 const todoKey = (t) => String(t.content || '').replace(/\s*~\s*\d+(?:\.\d+)?\s*(?:s|m|h)\w*\s*$/i, '').trim();
-function stampTodos(todos, prev, now) {
+function stampTodos(st, todos, prev, now, cfg) {
   const old = new Map((prev || []).map((t) => [todoKey(t), t]));
   (todos || []).forEach((t) => {
     const o = old.get(todoKey(t)) || {};
     if (t.status === 'in_progress') t.startedAt = o.startedAt && o.status === 'in_progress' ? o.startedAt : now;
     else if (t.status === 'completed') { t.startedAt = o.startedAt; t.endedAt = o.endedAt && o.status === 'completed' ? o.endedAt : now; }
+    // Plan usage: where the limits stand when a task starts, and what it used when it ends. The list is rebuilt on every
+    // call, so the numbers are carried over from the previous state of the same task first.
+    if (t.status === 'in_progress' || t.status === 'completed') {
+      if (o.usageStart) t.usageStart = o.usageStart;
+      if (o.usageEst && t.status === 'in_progress') t.usageEst = o.usageEst;
+    }
+    if (t.status === 'in_progress' && o.status !== 'in_progress') USAGE.startTask(st, t, now, cfg);
+    else if (t.status === 'completed' && o.status && o.status !== 'completed') USAGE.finishTask(st, t, now, cfg);
   });
 }
 
@@ -203,6 +214,7 @@ Otherwise (manual reporting) for EVERY build, test, install, migration, packagin
   node "${DASH}" eta 6m                # ESTIMATE FROM NOW for the current step. Update it EVERY time you check on the script.
   node "${DASH}" eta 6m --total        # TOTAL TIME LEFT for the WHOLE run, from now. Keep it true: give it at run start (run start --eta), and update it whenever the plan changes (a step starts or ends, an estimate changes, steps or sub-steps are added or dropped). If the dashboard or dash.js says it is out of date, fix it at once. If you forget, the dashboard works it out from the steps and says so, but you must still update it.
   node "${DASH}" step done | step fail "<reason>" ; node "${DASH}" run done|fail --summary "<result in plain words>"
+Other commands: node "${DASH}" ci-eta "<workflow name>" 6m (the expected time of a GitHub Actions workflow; "ci-eta clear <name>" removes it), node "${DASH}" usage (Claude's 5-hour and weekly limits, and the expected usage of the running task).
 Run the long command in the background, then check its output every 1-2 minutes and update the dashboard (step/sub/now/eta) each time.
 Write all dashboard texts in English, in simple words, no jargon (the user may not be technical). TODOs sync automatically from TodoWrite. If you have NO TodoWrite/TaskCreate tool in this session, you MUST still keep the user's TODO list yourself, for any task with 2+ steps: at the start run node "${DASH}" todo set "[~] current item|next item|another item" ; as you progress run node "${DASH}" todo done <n> / todo doing <n> / todo add "new item" (items marked [x]=done, [~]=in progress). Run these in the background like any command.`;
 
@@ -239,6 +251,10 @@ function main(inp) {
 
   if (event === 'SessionStart') {
     out = GUIDE;
+    try {
+      const notice = PluginUpdate.sessionStart();   // at most one background plugin update a day; the notice is shown once
+      if (notice) out += '\n\n' + notice;
+    } catch { /* the update check never breaks the session */ }
   } else if (event === 'UserPromptSubmit' && typeof inp.prompt === 'string' && !inp.prompt.trim().startsWith('/') &&
              !(st.todos || []).some((t) => t.status !== 'completed')) {
     out = `Agent Dashboard is ON and the user is watching it. If this task has 2+ steps, FIRST create the TODO list (TodoWrite/TaskCreate; if you have neither: node "${DASH}" todo set "[~] current|next|another"), keep it updated as you go (in_progress when starting a step, completed right after), and wrap EVERY build/test/install/script command with wrap.js (or report it with dash.js run/step/now); do not judge by duration. Dashboard texts in simple English.`;
@@ -281,7 +297,7 @@ function main(inp) {
   }
 
   if (!ss.title && event === 'UserPromptSubmit' && typeof inp.prompt === 'string' && !inp.prompt.trim().startsWith('/')) ss.title = inp.prompt.trim().replace(/\s+/g, ' ').slice(0, 40);
-  stampTodos(st.todos, prevTodos, now);
+  stampTodos(st, st.todos, prevTodos, now, Settings.read());
   Object.assign(ss, { todos: st.todos, goal: st.goal, context: st.context, todoSync: st.todoSync, lastSeen: now, cwd: inp.cwd, transcript: inp.transcript_path || ss.transcript });
   for (const k of Object.keys(st.sessions)) {
     const x = st.sessions[k];

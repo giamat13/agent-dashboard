@@ -16,4 +16,8 @@ Thanks for helping! The project has two parts that share `.agent-dashboard/state
 - Test with a small script using `wrap.js` before opening a pull request.
 - Never commit `.agent-dashboard/` (it holds local state and logs).
 
+## Releases
+- Bump the version in `vscode-extension/package.json` and `claude-plugin/.claude-plugin/plugin.json`, and add a `## <version>` section to `CHANGELOG.md`.
+- On every push to `main`, `.github/workflows/release.yml` runs the tests and, when the extension's version has no release yet, publishes it: the `.vsix`, its `.sha256` checksum, and the CHANGELOG section as the notes.
+
 Licensed under MIT (see LICENSE).

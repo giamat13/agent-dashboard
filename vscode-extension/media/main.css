@@ -70,6 +70,17 @@ button:hover { border-color: var(--run); }
 .bar.ok i { background: var(--ok); } .bar.bad i { background: var(--bad); }
 .bar.indet i { background: linear-gradient(90deg, transparent, var(--run), transparent); background-size: 50% 100%; background-repeat: no-repeat; animation: slide 1.4s linear infinite; }
 @keyframes slide { from { background-position: -50% 0; } to { background-position: 150% 0; } }
+/* planned share of a limit for the task in progress: striped, right after the used part */
+.bar { position: relative; }
+.bar i.u { position: absolute; top: 0; border-radius: 0; opacity: .6; background: repeating-linear-gradient(135deg, var(--run) 0 4px, transparent 4px 8px); transition: left .8s ease, width .8s ease; }
+/* GitHub Actions card: recent runs as small rows; the GitHub Pages line is smaller still */
+.gh .ghlabel { margin: 10px 0 2px; font-size: 12px; }
+.gh .ghrow { display: flex; gap: 8px; align-items: baseline; font-size: 13px; padding: 5px 0; border-top: 1px solid var(--line); }
+.gh .ghrow .gc { flex: none; width: 14px; text-align: center; font-weight: 700; }
+.gh .ghrow .gc.ok { color: var(--ok); } .gh .ghrow .gc.bad { color: var(--bad); }
+.gh .ghrow .gt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gh .ghrow .muted { font-size: 11px; white-space: nowrap; }
+.ghpages { margin-top: 8px; font-size: 11px; color: var(--dim); }
 
 /* sections / cards */
 .sec { margin-bottom: 14px; }
@@ -201,3 +212,20 @@ pre.tail { max-height: 64px; }
 .subs li .subt { margin-left: auto; color: var(--dim); font-size: 11px; white-space: nowrap; padding-left: 8px; }
 
 .todo .tt { margin-left: auto; padding-left: 8px; color: var(--dim); font-size: 11px; white-space: nowrap; }
+
+/* all sessions: grouped tasks and the other running runs */
+.grp { margin-bottom: 6px; }
+.grph { font-weight: 650; font-size: 12px; margin: 6px 0 2px; word-break: break-word; }
+.grph .muted { font-weight: 400; }
+.grpg { font-size: 11.5px; margin: 0 0 2px; word-break: break-word; }
+.others { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 8px; }
+/* Settings: gear in the header and its popover */
+.top { position: relative; }
+.gear { padding: 2px 9px; font-size: 16px; line-height: 1.2; border-radius: 99px; }
+.pop { position: absolute; right: 0; top: 100%; margin-top: 6px; z-index: 20; width: min(340px, calc(100vw - 32px)); background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; box-shadow: 0 8px 24px rgba(0,0,0,.28); }
+.poph { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.prow { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; border-top: 1px solid var(--line); cursor: pointer; }
+.prow input { margin: 3px 0 0; accent-color: var(--accent); }
+.prow > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.prow .muted { font-size: 11.5px; }
+.other { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 3px 10px; border: 1px solid var(--run); border-radius: 999px; background: var(--runbg); font-size: 12px; max-width: 100%; }

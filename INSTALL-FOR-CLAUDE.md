@@ -29,15 +29,23 @@ If the user already has the folder, run `git pull` inside it instead.
 ## 2. Install the Claude Code plugin
 
 ```
-claude plugin marketplace add <path-to>/agent-dashboard
+claude plugin marketplace add GIAMAT13/agent-dashboard
 claude plugin install agent-dashboard@agent-dashboard
 ```
 
-(`marketplace add GIAMAT13/agent-dashboard` also works once the repo is public on GitHub.)
+(For a local copy under development, use `claude plugin marketplace add <path-to>/agent-dashboard` instead.)
 
-To update later: `claude plugin marketplace update agent-dashboard` then `claude plugin update agent-dashboard@agent-dashboard`. A plugin only updates when its `version` in `claude-plugin/.claude-plugin/plugin.json` changes.
+To update later: `claude plugin marketplace update agent-dashboard` then `claude plugin update agent-dashboard@agent-dashboard`. A plugin only updates when its `version` in `claude-plugin/.claude-plugin/plugin.json` changes. The plugin also updates itself once a day in the background; after an update the next session says so, and Claude Code must be restarted to use it.
 
 ## 3. Install the VS Code extension
+
+From the release (preferred): download `agent-dashboard-<version>.vsix` from the repository's Releases page, or run `gh release download --repo GIAMAT13/agent-dashboard --pattern "*.vsix"`. Then:
+
+```
+code --install-extension agent-dashboard-<version>.vsix --force
+```
+
+From a local clone under development:
 
 ```
 cd <path-to>/agent-dashboard/vscode-extension
