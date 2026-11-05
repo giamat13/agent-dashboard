@@ -57,7 +57,7 @@ Add this section to the user's global `~/.claude/CLAUDE.md` (create the file if 
 Always, in every project, use the dashboard without being asked:
 
 - At the start of any task with 2+ steps, before other work, create the TODO list (TodoWrite/TaskCreate/TaskUpdate). Mark a step in_progress when you start it and completed right after. If those tools do not exist, use `node "<path-to>/agent-dashboard/claude-plugin/scripts/dash.js" todo set "[~] current|next|another"`.
-- Any command that may take more than 30 seconds (tests, builds, installs, migrations, long scripts): wrap it with `wrap.js`, or report with `dash.js` (`run start`, `step`, `now`, `eta`, `run done|fail`) and update at every check of the output.
+- Every build, test, install, migration, packaging step or script (do not judge by duration; only bare `ls`/`pwd`/`echo`/`cat`/`git status|log|diff` are exempt): wrap it with `wrap.js` and run the wrapper in the background, or report with `dash.js` (`run start`, `step`, `now`, `eta`, `run done|fail`) and update at every check of the output.
 - The scripts are always in `<path-to>/agent-dashboard/claude-plugin/scripts/`, even if the SessionStart hook did not inject instructions.
 - Dashboard texts are written in simple English.
 ```

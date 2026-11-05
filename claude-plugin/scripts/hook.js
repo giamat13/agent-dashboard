@@ -183,7 +183,7 @@ const GUIDE =`Agent Dashboard is ON: the user watches a live progress dashboard 
 PREFERRED for real scripts: wrap the command so the dashboard is live and automatic (heartbeat, last output line, auto % and ETA from the output, exit code):
   node "${DASH.replace('dash.js', 'wrap.js')}" --title "<title>" --plain "<plain sentence>" --steps "step1::plain|step2::plain" -- <the real command>
 (run that wrapper command itself in the background). The script may also print lines "@@step 2", "@@sub done", "@@now <text>", "@@eta 5m", "@@job start|done|fail <name>" to drive the dashboard. Stages are always dynamic: name them yourself per project (--steps, or @@step <new name> adds one on the fly). Parallel things: node "${DASH}" job start|done|fail <name>. Live line: node "${DASH}" log "<text>". User goal (/goal) is shown automatically; set manually with node "${DASH}" goal "<text>".
-Otherwise (manual reporting) for ANY command that may run more than ~30 seconds (tests, builds, installs, migrations, long scripts) report progress with:
+Otherwise (manual reporting) for EVERY build, test, install, migration, packaging step or script (do not judge whether it is short or long; only bare ls/pwd/echo/cat/git status|log|diff and file reads are exempt) report progress with:
   node "${DASH}" run start "<title>" --plain "<one plain sentence a non-technical person understands>" --steps "step1::plain explanation|step2::plain explanation" --eta 20m
   node "${DASH}" step start <n|name> --plain "<what is happening, simple words>" --eta 4m --subs "sub1|sub2|sub3"
   node "${DASH}" sub done [n|all]      # finish a sub-step
@@ -227,7 +227,7 @@ function main(inp) {
     out = GUIDE;
   } else if (event === 'UserPromptSubmit' && typeof inp.prompt === 'string' && !inp.prompt.trim().startsWith('/') &&
              !(st.todos || []).some((t) => t.status !== 'completed')) {
-    out = `Agent Dashboard is ON and the user is watching it. If this task has 2+ steps, FIRST create the TODO list (TodoWrite/TaskCreate; if you have neither: node "${DASH}" todo set "[~] current|next|another"), keep it updated as you go (in_progress when starting a step, completed right after), and wrap commands over 30 seconds with wrap.js/dash.js. Dashboard texts in simple English.`;
+    out = `Agent Dashboard is ON and the user is watching it. If this task has 2+ steps, FIRST create the TODO list (TodoWrite/TaskCreate; if you have neither: node "${DASH}" todo set "[~] current|next|another"), keep it updated as you go (in_progress when starting a step, completed right after), and wrap EVERY build/test/install/script command with wrap.js (or report it with dash.js run/step/now); do not judge by duration. Dashboard texts in simple English.`;
   } else if (event === 'PostToolUse' && /^(TodoWrite|TaskCreate|TaskUpdate)$/.test(inp.tool_name || '')) {
     syncTodos(st, inp);
   } else if (event === 'PreToolUse' || event === 'PostToolUse') {

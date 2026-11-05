@@ -1,6 +1,6 @@
 ---
 name: progress-dashboard
-description: Keep the user's VS Code dashboard up to date. Use at the start of every task with 2 or more steps (create the TODO list first and update it as you go), and before any test suite, build, install, migration or script that may take more than 30 seconds (steps, status, estimated time).
+description: Keep the user's VS Code dashboard up to date. Use at the start of every task with 2 or more steps (create the TODO list first and update it as you go), and before EVERY test suite, build, install, migration, packaging step or script, whatever its expected duration (steps, status, estimated time).
 ---
 
 # Progress Dashboard
@@ -12,6 +12,10 @@ The exact `dash.js` path is printed in the session-start context ("Agent Dashboa
 ## Every task with 2+ steps
 
 First thing, before other work: create the TODO list (`TodoWrite`/`TaskCreate`; without them: `DASH todo set "[~] current|next|another"`). Mark a step `in_progress` when you start it and `completed` right after. A one-step task needs no list.
+
+## Every build, test, install or script
+
+Do not decide whether it is "long enough". Wrap it: `node "<path>/wrap.js" --title "..." --plain "..." --steps "a::plain|b::plain" -- <command>` and run that in the background. Only bare `ls`/`pwd`/`echo`/`cat`/`git status|log|diff` and file reads are exempt.
 
 ## Flow for a long command
 
