@@ -128,14 +128,37 @@ function wire(webview) {
   });
 }
 
+// While the dashboard panel is open, the window title shows only the project name (not "Claude Dashboard - project").
+const TITLE_ONLY_PROJECT = '${rootName}';
+async function applyProjectOnlyTitle() {
+  try {
+    const cfg = vscode.workspace.getConfiguration('window');
+    const insp = cfg.inspect('title');
+    if (ctx.globalState.get('agentDashboard.prevTitleSaved') !== true) {
+      await ctx.globalState.update('agentDashboard.prevTitle', insp.globalValue === undefined ? null : insp.globalValue);
+      await ctx.globalState.update('agentDashboard.prevTitleSaved', true);
+    }
+    await cfg.update('title', TITLE_ONLY_PROJECT, vscode.ConfigurationTarget.Global);
+  } catch { /* ignore */ }
+}
+async function restoreTitle() {
+  try {
+    if (ctx.globalState.get('agentDashboard.prevTitleSaved') !== true) return;
+    const prev = ctx.globalState.get('agentDashboard.prevTitle');
+    await vscode.workspace.getConfiguration('window').update('title', prev === null ? undefined : prev, vscode.ConfigurationTarget.Global);
+    await ctx.globalState.update('agentDashboard.prevTitleSaved', false);
+  } catch { /* ignore */ }
+}
+
 function openPanel() {
   if (panel) return panel.reveal();
+  applyProjectOnlyTitle();
   panel = vscode.window.createWebviewPanel('agentDashboard.panel', 'Claude Dashboard', vscode.ViewColumn.Beside, {
     enableScripts: true,
     retainContextWhenHidden: true,
   });
   wire(panel.webview);
-  panel.onDidDispose(() => { panel = undefined; });
+  panel.onDidDispose(() => { panel = undefined; restoreTitle(); });
 }
 
 function clearHistory() {
@@ -151,6 +174,7 @@ function clearHistory() {
 
 function activate(context) {
   ctx = context;
+  if (!panel) restoreTitle();   // recover if the window was closed while the panel was open
   status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   status.command = 'agentDashboard.open';
   status.show();

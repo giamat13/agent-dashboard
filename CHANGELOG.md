@@ -26,3 +26,6 @@
 
 ## 0.3.26
 - Warning banner (and CLI WARNING) when a step estimate is longer than the total, or sub-steps add up to more than their step
+
+## 0.3.27
+- While the dashboard panel is open the window title shows only the project name; the previous setting is restored when it closes
