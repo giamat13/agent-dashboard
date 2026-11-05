@@ -2,7 +2,7 @@
   "name": "agent-dashboard",
   "displayName": "Agent Dashboard",
   "description": "Live dashboard for Claude: to-dos, context, and long-running scripts with steps and estimated time.",
-  "version": "0.3.17",
+  "version": "0.3.18",
   "publisher": "giamat13",
   "icon": "media/icon.png",
   "license": "MIT",

@@ -225,6 +225,9 @@ function main(inp) {
 
   if (event === 'SessionStart') {
     out = GUIDE;
+  } else if (event === 'UserPromptSubmit' && typeof inp.prompt === 'string' && !inp.prompt.trim().startsWith('/') &&
+             !(st.todos || []).some((t) => t.status !== 'completed')) {
+    out = `Agent Dashboard is ON and the user is watching it. If this task has 2+ steps, FIRST create the TODO list (TodoWrite/TaskCreate; if you have neither: node "${DASH}" todo set "[~] current|next|another"), keep it updated as you go (in_progress when starting a step, completed right after), and wrap commands over 30 seconds with wrap.js/dash.js. Dashboard texts in simple English.`;
   } else if (event === 'PostToolUse' && /^(TodoWrite|TaskCreate|TaskUpdate)$/.test(inp.tool_name || '')) {
     syncTodos(st, inp);
   } else if (event === 'PreToolUse' || event === 'PostToolUse') {
