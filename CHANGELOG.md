@@ -13,3 +13,7 @@
 
 ## 0.2.x
 - Unified to-do list and script progress, context bar up to auto-compact, TODO fallback without TodoWrite.
+
+## 0.3.23
+- Sub-steps take their own time estimate (name~2m), with time left and time taken
+- Claude tasks show estimates (item ~5m), time left and time taken

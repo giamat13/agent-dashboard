@@ -194,3 +194,10 @@ pre.tail { max-height: 64px; }
 /* empty columns take no space; remaining columns share the width */
 .col:empty { display: none; }
 @media (min-width: 760px) { .cols { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); } .col:nth-child(3) { grid-column: auto; } }
+
+/* sub-steps with their own estimates */
+.stage.doing .subs { display: block; }
+.subs li { align-items: baseline; }
+.subs li .subt { margin-left: auto; color: var(--dim); font-size: 11px; white-space: nowrap; padding-left: 8px; }
+
+.todo .tt { margin-left: auto; padding-left: 8px; color: var(--dim); font-size: 11px; white-space: nowrap; }

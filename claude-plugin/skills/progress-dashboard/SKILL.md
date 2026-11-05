@@ -30,6 +30,14 @@ Do not decide whether it is "long enough". Wrap it: `node "<path>/wrap.js" --tit
 4. `DASH step done` (or `step fail "reason"`), then the next step.
 5. Finish: `DASH run done --summary "Everything passed, 120 tests"` or `run fail --summary "..."`.
 
+## Estimates on the smallest sub-steps
+
+Give every sub-step its own estimate: `--subs "Users~2m|Payments~90s|Reports~30s"` (the part after `~`), or per sub-step `DASH sub start 2 --eta 90s`. In `wrap.js` output: `@@sub add Users~2m|Payments~90s`. Revise with `DASH sub start N --eta <time>` when you learn more. The dashboard shows "~time left" next to the running sub-step and moves the percentage with it.
+
+## Estimates on the task list
+
+End every TODO item with an estimate: `Write tests ~5m`, `Build ~2m`. The dashboard shows it (and time left / time taken) on the right of the task in "Claude's tasks".
+
 ## Progress percentage
 
 The progress ring and bar move only when you report progress. Put a count or percentage in every `now` text, e.g. `DASH now "33 of 36 test suites finished"` or `"Download 45%"`; the dashboard turns it into the percentage of the current step. A run's first step starts automatically.

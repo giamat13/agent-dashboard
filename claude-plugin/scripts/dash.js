@@ -29,7 +29,14 @@ const mkStep = (spec) => {
   const [title, plain] = String(spec).split('::');
   return { title: title.trim(), plain: (plain || '').trim(), status: 'todo', subs: [] };
 };
-const mkSubs = (str) => String(str).split('|').map((t) => ({ title: t.trim(), status: 'todo' })).filter((x) => x.title);
+// "Users~2m" = sub-step "Users" with an estimate of 2 minutes
+const mkSub = (t) => { const [title, eta] = String(t).split('~'); const x = { title: title.trim(), status: 'todo' }; const sec = eta ? S.parseDuration(eta.trim()) : null; if (sec !== null) x.etaSeconds = sec; return x; };
+const mkSubs = (str) => String(str).split('|').map(mkSub).filter((x) => x.title);
+const touchSub = (x, status) => {
+  x.status = status;
+  if (status === 'doing') { x.startedAt = now; delete x.endedAt; if (x.etaSeconds) x.etaSetAt = now; }
+  else { x.endedAt = now; if (!x.startedAt) x.startedAt = now; }
+};
 const setEta = (o, v) => {
   const sec = S.parseDuration(v);
   if (sec === null) die('Invalid time: ' + v + ' (examples: 90s, 5m, 1h30m)');
@@ -132,11 +139,12 @@ switch (cmd) {
       s.subs.push(...mkSubs(arg || die('Missing text')));
     } else if (sub === 'start' || sub === 'done' || sub === 'fail') {
       const status = { start: 'doing', done: 'done', fail: 'failed' }[sub];
-      if (arg === 'all') s.subs.forEach((x) => { x.status = status; });
+      if (arg === 'all') s.subs.forEach((x) => touchSub(x, status));
       else {
         const x = arg ? s.subs[+arg - 1] : s.subs.find((y) => y.status === 'doing') || s.subs.find((y) => y.status === 'todo');
         if (!x) die('Sub-step not found');
-        x.status = status;
+        touchSub(x, status);
+        if (flags.eta) { const sec = S.parseDuration(flags.eta); if (sec === null) die('Invalid time: ' + flags.eta); x.etaSeconds = sec; x.etaSetAt = now; }
         if (flags.note) x.note = String(flags.note);
         log(r, 'Sub-step ' + (status === 'done' ? 'finished' : status === 'doing' ? 'started' : 'failed') + ': ' + x.title);
       }
@@ -241,6 +249,7 @@ switch (cmd) {
       const t = st.todos.find((x) => x.id === String(arg));
       if (!t) die('No such TODO: ' + arg);
       t.status = sub === 'doing' ? 'in_progress' : sub === 'done' ? 'completed' : 'pending';
+      if (t.status === 'in_progress') t.startedAt = now; else if (t.status === 'completed') { t.endedAt = now; if (!t.startedAt) t.startedAt = now; }
     } else if (sub === 'clear') st.todos = [];
     else die('Usage: todo set "a|[~] b|[x] c" | todo doing|done|pending <n> | todo clear');
     console.log('TODOs: ' + st.todos.map((t) => `${t.id}.[${t.status}] ${t.content}`).join(' ; '));

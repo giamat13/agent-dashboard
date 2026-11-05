@@ -95,6 +95,17 @@ function readContext(transcript, cwd) {
   return null;
 }
 
+// Remember when each task started/finished (matched by text without the "~5m" estimate).
+const todoKey = (t) => String(t.content || '').replace(/\s*~\s*\d+(?:\.\d+)?\s*(?:s|m|h)\w*\s*$/i, '').trim();
+function stampTodos(todos, prev, now) {
+  const old = new Map((prev || []).map((t) => [todoKey(t), t]));
+  (todos || []).forEach((t) => {
+    const o = old.get(todoKey(t)) || {};
+    if (t.status === 'in_progress') t.startedAt = o.startedAt && o.status === 'in_progress' ? o.startedAt : now;
+    else if (t.status === 'completed') { t.startedAt = o.startedAt; t.endedAt = o.endedAt && o.status === 'completed' ? o.endedAt : now; }
+  });
+}
+
 function syncTodos(st, inp) {
   const name = inp.tool_name;
   const ti = inp.tool_input || {};
@@ -185,7 +196,7 @@ PREFERRED for real scripts: wrap the command so the dashboard is live and automa
 (run that wrapper command itself in the background). The script may also print lines "@@step 2", "@@sub done", "@@now <text>", "@@eta 5m", "@@job start|done|fail <name>" to drive the dashboard. Stages are always dynamic: name them yourself per project (--steps, or @@step <new name> adds one on the fly). Parallel things: node "${DASH}" job start|done|fail <name>. Live line: node "${DASH}" log "<text>". User goal (/goal) is shown automatically; set manually with node "${DASH}" goal "<text>".
 Otherwise (manual reporting) for EVERY build, test, install, migration, packaging step or script (do not judge whether it is short or long; only bare ls/pwd/echo/cat/git status|log|diff and file reads are exempt) report progress with:
   node "${DASH}" run start "<title>" --plain "<one plain sentence a non-technical person understands>" --steps "step1::plain explanation|step2::plain explanation" --eta 20m
-  node "${DASH}" step start <n|name> --plain "<what is happening, simple words>" --eta 4m --subs "sub1|sub2|sub3"
+  node "${DASH}" step start <n|name> --plain "<what is happening, simple words>" --eta 4m --subs "sub1~2m|sub2~90s|sub3~30s"   # every sub-step gets its own estimate after ~
   node "${DASH}" sub done [n|all]      # finish a sub-step
   node "${DASH}" now "<what is happening right now, simple words, with counts like '33 of 36 done' or '45%': the progress bar follows them>"
   node "${DASH}" eta 6m                # ESTIMATE FROM NOW for the current step. Update it EVERY time you check on the script.
@@ -209,6 +220,7 @@ function main(inp) {
     return;
   }
   const ss = st.sessions[sid] || (st.sessions[sid] = { id: sid, firstSeen: now, todos: [], context: null, goal: null });
+  const prevTodos = (ss.todos || []).map((t) => Object.assign({}, t));
   st.todos = ss.todos || []; st.goal = ss.goal || null; st.context = ss.context || null; st.todoSync = ss.todoSync;
   const ctx = readContext(inp.transcript_path, inp.cwd);
   if (ctx) st.context = ctx;
@@ -264,6 +276,7 @@ function main(inp) {
   }
 
   if (!ss.title && event === 'UserPromptSubmit' && typeof inp.prompt === 'string' && !inp.prompt.trim().startsWith('/')) ss.title = inp.prompt.trim().replace(/\s+/g, ' ').slice(0, 40);
+  stampTodos(st.todos, prevTodos, now);
   Object.assign(ss, { todos: st.todos, goal: st.goal, context: st.context, todoSync: st.todoSync, lastSeen: now, cwd: inp.cwd, transcript: inp.transcript_path || ss.transcript });
   for (const k of Object.keys(st.sessions)) {
     const x = st.sessions[k];

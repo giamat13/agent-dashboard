@@ -99,11 +99,12 @@ function handleLine(raw) {
       } else if (kind === 'sub') {
         const s = curStep(r); if (!s) return;
         const [act, ...tail] = rest.split(/\s+/); const arg = tail.join(' ');
-        if (act === 'add') s.subs.push(...arg.split('|').map((t) => ({ title: t.trim(), status: 'todo' })).filter((x) => x.title));
+        const mkSub = (t) => { const [title, eta] = t.split('~'); const x = { title: title.trim(), status: 'todo' }; const sec = eta ? S.parseDuration(eta.trim()) : null; if (sec !== null) x.etaSeconds = sec; return x; };
+        if (act === 'add') s.subs.push(...arg.split('|').map(mkSub).filter((x) => x.title));
         else {
           const status = { start: 'doing', done: 'done', fail: 'failed' }[act]; if (!status) return;
           const x = /^\d+$/.test(arg) ? s.subs[+arg - 1] : s.subs.find((y) => y.status === 'doing') || s.subs.find((y) => y.status === 'todo');
-          if (x) x.status = status;
+          if (x) { x.status = status; if (status === 'doing') { x.startedAt = now; if (x.etaSeconds) x.etaSetAt = now; } else { x.endedAt = now; } }
         }
       }
     });

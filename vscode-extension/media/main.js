@@ -78,7 +78,12 @@
 
   const stepFrac = (s, now) => {
     if (typeof s.frac === 'number') return Math.min(s.frac, 0.99);
-    if (s.subs && s.subs.length) return s.subs.filter((x) => x.status === 'done').length / s.subs.length;
+    if (s.subs && s.subs.length) {
+      const d = s.subs.filter((x) => x.status === 'done').length;
+      const run = s.subs.find((x) => x.status === 'doing' && x.etaSeconds && x.etaSetAt);
+      const part = run ? Math.min(0.95, (now - run.startedAt) / 1000 / Math.max(run.etaSeconds + (run.etaSetAt - run.startedAt) / 1000, 1)) : 0;
+      return Math.min(0.99, (d + part) / s.subs.length);
+    }
     if (s.etaSeconds && s.startedAt) {
       const total = (s.etaSetAt - s.startedAt) / 1000 + s.etaSeconds;
       return Math.min(0.95, (now - s.startedAt) / 1000 / Math.max(total, 1));
@@ -175,6 +180,14 @@
     return '';
   }
 
+  function subTime(x, now) {
+    let t = '';
+    if (x.status === 'done' && x.startedAt && x.endedAt && x.endedAt > x.startedAt) t = 'took ' + dur((x.endedAt - x.startedAt) / 1000);
+    else if (x.status === 'doing') { const l = etaLeft(x, now); t = l === null ? (x.startedAt ? 'running ' + dur((now - x.startedAt) / 1000) : '') : l > 0 ? '~' + dur(l) + ' left' : 'past the estimate'; }
+    else if (x.status === 'todo' && x.etaSeconds) t = '~' + dur(x.etaSeconds);
+    return t ? '<span class="subt">' + t + '</span>' : '';
+  }
+
   // ---------- pipeline (dynamic stages from the run) ----------
   function pipelineHtml(run, now) {
     if (!run || !run.steps.length) return '';
@@ -184,7 +197,7 @@
       if (s.status === 'doing') {
         const left = etaLeft(s, now);
         note = bar(Math.round(stepFrac(s, now) * 100)) + '<div class="meta">' + (left === null ? 'running ' + dur((now - s.startedAt) / 1000) : left > 0 ? '~' + dur(left) + ' left' : 'past the estimate') + '</div>';
-        if (s.subs && s.subs.length) note += '<ul class="subs">' + s.subs.map((x) => '<li class="' + x.status + '"><span>' + ({ done: '✓', doing: '▶', failed: '✗', todo: '·' }[x.status] || '·') + '</span><span>' + esc(x.title) + '</span></li>').join('') + '</ul>';
+        if (s.subs && s.subs.length) note += '<ul class="subs">' + s.subs.map((x) => '<li class="' + x.status + '"><span>' + ({ done: '✓', doing: '▶', failed: '✗', todo: '·' }[x.status] || '·') + '</span><span>' + esc(x.title) + '</span>' + subTime(x, now) + '</li>').join('') + '</ul>';
       } else if (s.status === 'done' && s.startedAt && s.endedAt) note = '<div class="meta">took ' + dur((s.endedAt - s.startedAt) / 1000) + '</div>';
       else if (s.status === 'todo' && s.etaSeconds) note = '<div class="meta">~' + dur(s.etaSeconds) + '</div>';
       if (s.note) note += '<div class="meta">' + esc(s.note) + '</div>';
@@ -204,6 +217,21 @@
     return h;
   }
 
+  // "Write tests ~5m" -> text + estimate in seconds
+  function splitEst(t) {
+    const m = /\s*~\s*(\d+(?:\.\d+)?)\s*(s|m|h)\w*\s*$/i.exec(t || '');
+    if (!m) return { text: t || '', est: null };
+    return { text: t.slice(0, m.index), est: +m[1] * { s: 1, m: 60, h: 3600 }[m[2].toLowerCase()] };
+  }
+  function todoTime(t, est, now) {
+    let x = '';
+    if (t.status === 'completed') { if (t.startedAt && t.endedAt && t.endedAt - t.startedAt > 1500) x = 'took ' + dur((t.endedAt - t.startedAt) / 1000); }
+    else if (t.status === 'in_progress' && est) { const left = est - (t.startedAt ? (now - t.startedAt) / 1000 : 0); x = left > 0 ? '~' + dur(left) + ' left' : 'past the estimate'; }
+    else if (t.status === 'in_progress' && t.startedAt) x = 'running ' + dur((now - t.startedAt) / 1000);
+    else if (est) x = '~' + dur(est);
+    return x ? '<span class="tt">' + x + '</span>' : '';
+  }
+
   // ---------- tasks ----------
   function tasksHtml(S, run, now) {
     const todos = S.todos || [];
@@ -212,10 +240,11 @@
     const done = todos.filter((t) => t.status === 'completed');
     const rest = todos.filter((t) => t.status !== 'completed');
     h += '<div class="tasksum"><b>' + done.length + ' of ' + todos.length + '</b> <span class="muted">completed</span></div>' + bar(Math.round((done.length / todos.length) * 100), 'ok');
-    if (done.length) h += det('doneTasks') + '<summary>✓ ' + plural(done.length, 'task') + ' done</summary>' + done.map((t) => '<div class="todo completed"><span class="cb">✓</span><span class="tx">' + esc(t.content) + '</span></div>').join('') + '</details>';
+    if (done.length) h += det('doneTasks') + '<summary>✓ ' + plural(done.length, 'task') + ' done</summary>' + done.map((t) => { const e = splitEst(t.content); return '<div class="todo completed"><span class="cb">✓</span><span class="tx">' + esc(e.text) + '</span>' + todoTime(t, e.est, now) + '</div>'; }).join('') + '</details>';
     h += rest.map((t) => {
       const doing = t.status === 'in_progress';
-      return '<div class="todo ' + t.status + '"><span class="cb">' + (doing ? '<span class="spin">◐</span>' : '') + '</span><span class="tx">' + esc(doing && t.activeForm ? t.activeForm : t.content) + '</span></div>';
+      const e = splitEst(t.content);
+      return '<div class="todo ' + t.status + '"><span class="cb">' + (doing ? '<span class="spin">◐</span>' : '') + '</span><span class="tx">' + esc(doing && t.activeForm ? splitEst(t.activeForm).text : e.text) + '</span>' + todoTime(t, e.est, now) + '</div>';
     }).join('');
     return h + '</div>';
   }
