@@ -9,6 +9,14 @@ The user watches a dashboard in VS Code and often cannot tell whether a long scr
 
 The exact `dash.js` path is printed in the session-start context ("Agent Dashboard is ON"). It is also `${CLAUDE_PLUGIN_ROOT}/scripts/dash.js`. Below, `DASH` = `node "<path>/dash.js"`.
 
+## Fully autonomous
+
+The user never has to remind you or give instructions about the dashboard. Do all of this yourself, every time, without being asked:
+- Create the TODO list in your first action, each item ending with an estimate (`Write tests ~5m`).
+- Break every step into small sub-steps yourself and give each its own estimate (`--subs "a~2m|b~90s"`), then run `sub start` / `sub done` as you go. Sub-steps are never optional.
+- Update the dashboard continuously during the whole task (every step change, every output check, every plan change), not only at the start and end.
+- Fix an estimate (`eta`, `sub start N --eta`) as soon as it proves wrong.
+
 ## Every task with 2+ steps
 
 First thing, before other work: create the TODO list (`TodoWrite`/`TaskCreate`; without them: `DASH todo set "[~] current|next|another"`). Mark a step `in_progress` when you start it and `completed` right after. A one-step task needs no list.

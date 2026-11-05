@@ -17,3 +17,6 @@
 ## 0.3.23
 - Sub-steps take their own time estimate (name~2m), with time left and time taken
 - Claude tasks show estimates (item ~5m), time left and time taken
+
+## 0.3.24
+- Fully autonomous rules: continuous updates, estimates on every task, Claude splits steps into sub-steps itself

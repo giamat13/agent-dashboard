@@ -191,6 +191,7 @@ function parseGoal(txt) {
 }
 
 const GUIDE =`Agent Dashboard is ON: the user watches a live progress dashboard inside VS Code (TODOs, context, long-running scripts).
+FULLY AUTONOMOUS: never wait to be told. Update it continuously, end every TODO item with an estimate ("item ~5m"), and split every step into small sub-steps YOURSELF, each with its own estimate (--subs "a~2m|b~90s"), then sub start/done as you go.
 PREFERRED for real scripts: wrap the command so the dashboard is live and automatic (heartbeat, last output line, auto % and ETA from the output, exit code):
   node "${DASH.replace('dash.js', 'wrap.js')}" --title "<title>" --plain "<plain sentence>" --steps "step1::plain|step2::plain" -- <the real command>
 (run that wrapper command itself in the background). The script may also print lines "@@step 2", "@@sub done", "@@now <text>", "@@eta 5m", "@@job start|done|fail <name>" to drive the dashboard. Stages are always dynamic: name them yourself per project (--steps, or @@step <new name> adds one on the fly). Parallel things: node "${DASH}" job start|done|fail <name>. Live line: node "${DASH}" log "<text>". User goal (/goal) is shown automatically; set manually with node "${DASH}" goal "<text>".
