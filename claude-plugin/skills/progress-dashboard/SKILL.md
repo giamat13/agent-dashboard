@@ -1,6 +1,6 @@
 ---
 name: progress-dashboard
-description: Report live progress (steps, sub-steps, plain-language status, estimated time) to the user's VS Code dashboard. Use before running any test suite, build, install, migration or script that may take more than 30 seconds.
+description: Keep the user's VS Code dashboard up to date. Use at the start of every task with 2 or more steps (create the TODO list first and update it as you go), and before any test suite, build, install, migration or script that may take more than 30 seconds (steps, status, estimated time).
 ---
 
 # Progress Dashboard
@@ -8,6 +8,10 @@ description: Report live progress (steps, sub-steps, plain-language status, esti
 The user watches a dashboard in VS Code and often cannot tell whether a long script is progressing. Your job: keep it truthful and understandable to a non-technical person.
 
 The exact `dash.js` path is printed in the session-start context ("Agent Dashboard is ON"). It is also `${CLAUDE_PLUGIN_ROOT}/scripts/dash.js`. Below, `DASH` = `node "<path>/dash.js"`.
+
+## Every task with 2+ steps
+
+First thing, before other work: create the TODO list (`TodoWrite`/`TaskCreate`; without them: `DASH todo set "[~] current|next|another"`). Mark a step `in_progress` when you start it and `completed` right after. A one-step task needs no list.
 
 ## Flow for a long command
 
