@@ -30,6 +30,10 @@ Do not decide whether it is "long enough". Wrap it: `node "<path>/wrap.js" --tit
 4. `DASH step done` (or `step fail "reason"`), then the next step.
 5. Finish: `DASH run done --summary "Everything passed, 120 tests"` or `run fail --summary "..."`.
 
+## Progress percentage
+
+The progress ring and bar move only when you report progress. Put a count or percentage in every `now` text, e.g. `DASH now "33 of 36 test suites finished"` or `"Download 45%"`; the dashboard turns it into the percentage of the current step. A run's first step starts automatically.
+
 ## Writing rules
 
 - Write in English, short sentences, no jargon ("We are checking that payments still work" not "executing integration suite").

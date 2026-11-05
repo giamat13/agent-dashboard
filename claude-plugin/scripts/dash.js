@@ -43,6 +43,23 @@ const closeStep = (s, status) => {
   if (r && status === 'done' && s.startedAt) S.histSet(st, 'step:' + r.title + '/' + s.title, (now - s.startedAt) / 1000);   // remembered as the estimate for next time
 };
 
+// A run whose steps are all still "todo" shows no progress: start the first one automatically.
+function ensureStep(r) {
+  if (!r.steps.length || r.steps.some((x) => x.status === 'doing')) return;
+  const s = r.steps.find((x) => x.status === 'todo');
+  if (!s) return;
+  s.status = 'doing'; s.startedAt = now; delete s.endedAt;
+}
+// "33 of 36" / "33/36" / "45%" in a status line becomes real progress for the current step.
+function progressFromText(r, text) {
+  const s = r.steps.find((x) => x.status === 'doing');
+  if (!s) return;
+  let m = /(\d+)\s*(?:of|\/)\s*(\d+)/i.exec(text);
+  let f = m && +m[2] > 0 ? +m[1] / +m[2] : null;
+  if (f === null) { m = /(\d{1,3})\s*%/.exec(text); if (m) f = +m[1] / 100; }
+  if (f !== null && f >= 0 && f <= 1) s.frac = f;
+}
+
 const [cmd, sub, arg] = pos;
 
 switch (cmd) {
@@ -57,6 +74,7 @@ switch (cmd) {
       };
       if (flags.eta) setEta(run, flags.eta);
       else { const h = S.histGet(st, 'run:' + title); if (h) { run.etaSeconds = h; run.etaSetAt = now; run.etaFromHistory = true; } }
+      ensureStep(run);
       log(run, 'Started: ' + title);
       st.runs.push(run);
       console.log('Run started. Next: step start 1 --plain "..." --eta 5m');
@@ -130,6 +148,7 @@ switch (cmd) {
   case 'eta': {
     const r = need();
     const val = sub || die('Missing time, e.g. eta 8m');
+    ensureStep(r);
     const sec = setEta(flags.total ? r : needStep(r), val);
     if (flags.note) r.now = String(flags.note);
     log(r, 'Time estimate updated: ' + Math.round(sec / 60) + ' min' + (flags.total ? ' (total)' : ''));
@@ -140,6 +159,8 @@ switch (cmd) {
   case 'now': {
     const r = need();
     r.now = sub || die('Missing text');
+    ensureStep(r);
+    progressFromText(r, r.now);
     log(r, r.now);
     r.lastActivityAt = now;
     console.log('Updated');

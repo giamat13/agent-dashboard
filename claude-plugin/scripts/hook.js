@@ -187,7 +187,7 @@ Otherwise (manual reporting) for EVERY build, test, install, migration, packagin
   node "${DASH}" run start "<title>" --plain "<one plain sentence a non-technical person understands>" --steps "step1::plain explanation|step2::plain explanation" --eta 20m
   node "${DASH}" step start <n|name> --plain "<what is happening, simple words>" --eta 4m --subs "sub1|sub2|sub3"
   node "${DASH}" sub done [n|all]      # finish a sub-step
-  node "${DASH}" now "<what is happening right now, simple words>"
+  node "${DASH}" now "<what is happening right now, simple words, with counts like '33 of 36 done' or '45%': the progress bar follows them>"
   node "${DASH}" eta 6m                # ESTIMATE FROM NOW for the current step. Update it EVERY time you check on the script.
   node "${DASH}" step done | step fail "<reason>" ; node "${DASH}" run done|fail --summary "<result in plain words>"
 Run the long command in the background, then check its output every 1-2 minutes and update the dashboard (step/sub/now/eta) each time.
