@@ -22,6 +22,10 @@ Setting: `agentDashboard.staleMinutes` (default 3) — minutes of silence before
 
 MIT © GIAMAT13
 
+## New in 0.4.4
+
+- **Google Antigravity**: its sessions show the Antigravity icon. Progress: run `dash.js agent-setup antigravity` (in the plugin's `scripts` folder) and it prints the hook settings for `~/.gemini/config/hooks.json`. Nothing is written for you. There are no Antigravity limits in the panel, because Google publishes no numbers for them.
+
 ## New in 0.4.1
 
 - **Codex and GitHub Copilot limits**: shown only for paid plans. A limit that exists only on the free plan is not shown, so a free plan shows no card. Codex: 5-hour and weekly limits from its local session files. Copilot: the premium-request allowance, read through the `gh` CLI.

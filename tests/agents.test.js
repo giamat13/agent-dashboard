@@ -74,6 +74,22 @@ try {
   assert.ok(A.setupText('copilot', SCRIPTS).includes('.github/hooks/agent-dashboard.json'));
   console.log('ok - setup files for Codex and Copilot');
 
+  // Antigravity: camelCase input (conversation, folder, run_command as a shell call); the first model call of a turn is the prompt.
+  n = A.normalize('antigravity', { conversationId: 'ag-1', workspacePaths: ['C:/p'], lastUserInput: 'Fix it', invocationNum: 0 }, 'PreInvocation');
+  assert.deepStrictEqual([n.hook_event_name, n.session_id, n.cwd, n.prompt, n.transcript_path], ['UserPromptSubmit', 'ag-1', 'C:/p', 'Fix it', null]);
+  n = A.normalize('antigravity', { conversationId: 'ag-1', workspacePaths: ['C:/p'], invocationNum: 3 }, 'PreInvocation');
+  assert.strictEqual(n.hook_event_name, 'PreInvocation');
+  n = A.normalize('antigravity', { conversationId: 'ag-1', toolCall: { name: 'run_command', args: { CommandLine: 'npm test', Cwd: 'C:/p' } }, error: '' }, 'PostToolUse');
+  assert.deepStrictEqual([n.hook_event_name, n.tool_name, n.tool_input.command], ['PostToolUse', 'Bash', 'npm test']);
+  assert.strictEqual(JSON.parse(A.output('antigravity', 'SessionStart', ctx)).injectSteps[0].systemMessage.systemMessage, ctx);
+  assert.strictEqual(A.output('antigravity', 'PostToolUse', ctx), '{}', 'Antigravity always gets a JSON answer');
+  assert.strictEqual(A.output('antigravity', 'PreInvocation', ''), '{}');
+  const agCfg = JSON.parse(JSON.stringify(A.hookConfig('antigravity', SCRIPTS)));
+  assert.ok(agCfg['agent-dashboard'].SessionStart[0].hooks[0].command.endsWith('--agent antigravity --event SessionStart'));
+  assert.strictEqual(agCfg['agent-dashboard'].PostToolUse[0].matcher, '*');
+  assert.ok(A.setupText('antigravity', SCRIPTS).includes('.gemini/config/hooks.json'));
+  console.log('ok - Antigravity input, output and setup file');
+
   // hook.js run end to end. (The Claude session start is not run here: it may start the plugin update check.)
   const project = path.join(tmp, 'project');
   fs.mkdirSync(project);
@@ -100,6 +116,16 @@ try {
   assert.ok(st.sessions['cp-1'] && st.sessions['cx-1'], 'both sessions are on the dashboard');
   assert.strictEqual(st.sessions['cx-1'].title, 'Fix the login bug');
   console.log('ok - hook.js: Copilot and Codex session start, tool calls and prompts');
+
+  r = run(['--agent', 'antigravity', '--event', 'SessionStart'], { conversationId: 'ag-1', workspacePaths: [project], modelName: 'test' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(JSON.parse(r.stdout).injectSteps[0].systemMessage.systemMessage.includes('Agent Dashboard is ON'));
+  r = run(['--agent', 'antigravity', '--event', 'PostToolUse'], { conversationId: 'ag-1', workspacePaths: [project], toolCall: { name: 'run_command', args: { CommandLine: 'node dash.js todo set x' } } });
+  assert.strictEqual(r.stdout, '{}', 'a tool call gets an empty JSON answer');
+  st = S.load(project);
+  assert.strictEqual(st.sessions['ag-1'].agent, 'antigravity');
+  assert.strictEqual(st.sessions['cx-1'].agent, 'codex', 'each session keeps the agent that ran it');
+  console.log('ok - hook.js: Antigravity session start and tool calls; sessions keep their agent');
 
   r = run(['--agent', 'codex', '--event', 'SessionEnd'], { session_id: 'cx-1', cwd: project });
   r = run(['--agent', 'copilot', '--event', 'sessionEnd'], { sessionId: 'cp-1', cwd: project });

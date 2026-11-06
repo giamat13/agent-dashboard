@@ -55,6 +55,7 @@
     claude: { name: 'Claude', color: '#d97757' },
     codex: { name: 'Codex', color: '#10a37f' },
     copilot: { name: 'GitHub Copilot', color: '#8957e5' },
+    antigravity: { name: 'Antigravity', color: '#4285f4' },
   };
   function agentIcon(agent) {
     const a = AGENT_INFO[agent] ? agent : 'claude';
@@ -63,7 +64,9 @@
       ? '<path d="M5 7l5 5-5 5M12 17h7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>'
       : a === 'copilot'
         ? '<path d="M5.5 9.5c0-2.3 2.6-3.5 6.5-3.5s6.5 1.2 6.5 3.5v3c0 3.4-2.9 6-6.5 6s-6.5-2.6-6.5-6z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="9.2" cy="12.4" r="1.4" fill="currentColor"/><circle cx="14.8" cy="12.4" r="1.4" fill="currentColor"/>'
-        : '<path d="M12 3.5v17M4.6 7.7l14.8 8.6M4.6 16.3l14.8-8.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>';
+        : a === 'antigravity'
+          ? '<path d="M4.5 19.5L12 4.5l7.5 15M7.6 14.5h8.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>'
+          : '<path d="M12 3.5v17M4.6 7.7l14.8 8.6M4.6 16.3l14.8-8.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>';
     return '<svg viewBox="0 0 24 24" width="14" height="14" role="img" aria-label="' + info.name + '" style="color:' + info.color + ';vertical-align:-2px;margin-right:5px;flex:none"><title>' + info.name + '</title>' + shape + '</svg>';
   }
   function tabsHtml(list, curId, now) {

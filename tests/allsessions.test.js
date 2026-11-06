@@ -153,7 +153,9 @@ const list = [a, b]; // newest first, as sessionList() returns them
 {
   const c = { id: 'sc', title: 'Port', agent: 'codex', lastSeen: NOW - 2000, todos: [] };
   const p = { id: 'sp', title: 'Copy', agent: 'copilot', lastSeen: NOW - 3000, todos: [] };
-  const tabs = web('sc').tabsHtml([a, c, p], 'sc', NOW);
+  const g = { id: 'sg', title: 'Build', agent: 'antigravity', lastSeen: NOW - 4000, todos: [] };
+  const tabs = web('sc').tabsHtml([a, c, p, g], 'sc', NOW);
+  assert.ok(tabs.includes('aria-label="Antigravity"'), 'Antigravity icon on its tab');
   assert.ok(tabs.includes('aria-label="Codex"'), 'Codex icon on its tab');
   assert.ok(tabs.includes('aria-label="GitHub Copilot"'), 'Copilot icon on its tab');
   assert.ok(tabs.includes('aria-label="Claude"'), 'Claude icon for a session without an agent');

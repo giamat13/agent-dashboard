@@ -360,14 +360,14 @@ switch (cmd) {
     process.exit(0);
   }
   case 'agent-setup': {
-    // agent-setup codex|copilot: the hook registration and the instructions for another coding agent. Writes no files.
+    // agent-setup codex|copilot|antigravity: the hook registration and the instructions for another coding agent. Writes no files.
     const name = String(sub || '').toLowerCase();
-    if (!['codex', 'copilot'].includes(name)) die('Usage: dash.js agent-setup codex|copilot');
+    if (!['codex', 'copilot', 'antigravity'].includes(name)) die('Usage: dash.js agent-setup codex|copilot|antigravity');
     console.log(Agents.setupText(name, __dirname));
     break;
   }
   default:
-    die('Usage: dash.js run start|done|fail | step start|done|fail | sub add|start|done | eta <time> [--total] | now "..." | log "..." | job add|start|done|fail|live | todo set|add|doing|done | status | reset | clear | settings [get|set] | usage [--json] | ci-eta "<job>" <time> | agent-setup codex|copilot');
+    die('Usage: dash.js run start|done|fail | step start|done|fail | sub add|start|done | eta <time> [--total] | now "..." | log "..." | job add|start|done|fail|live | todo set|add|doing|done | status | reset | clear | settings [get|set] | usage [--json] | ci-eta "<job>" <time> | agent-setup codex|copilot|antigravity');
 }
 
 // The run's total time left must cover the steps still to do. When it does not, the dashboard works it out from the steps

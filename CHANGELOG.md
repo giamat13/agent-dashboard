@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.4
+- Google Antigravity is a supported agent: its sessions show the Antigravity icon, and `dash.js agent-setup antigravity` prints the hook setup for `~/.gemini/config/hooks.json`. The dashboard writes no files for it.
+- No usage limits card for Antigravity: Google publishes no numeric limits, and there is no local file to read them from.
+
 ## 0.4.3
 - The sidebar icon of the extension is removed. Open the dashboard from the status bar item ("Agents") or with "Agent Dashboard: Open in large window".
 

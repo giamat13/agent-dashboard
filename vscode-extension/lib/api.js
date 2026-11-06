@@ -53,6 +53,9 @@ function writeInfo(dirs, info) {
   for (const dir of dirs) {
     try {
       fs.mkdirSync(dir, { recursive: true });
+      // The folder keeps itself out of git, in every project, even when this file is the first thing written there.
+      const gi = path.join(dir, '.gitignore');
+      if (!fs.existsSync(gi)) fs.writeFileSync(gi, '*\n');
       fs.writeFileSync(path.join(dir, INFO_FILE), JSON.stringify(info, null, 1) + '\n');
     } catch { /* a folder we cannot write to: the API still runs */ }
   }

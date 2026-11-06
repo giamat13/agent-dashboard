@@ -1,14 +1,18 @@
 'use strict';
-// Other coding agents on the same dashboard: OpenAI Codex and GitHub Copilot send their hook events to hook.js as
+// Other coding agents on the same dashboard: OpenAI Codex, GitHub Copilot and Google Antigravity send their hook events to hook.js as
 // "--agent <name> --event <Event>". This module turns each agent's input into the shape hook.js reads, decides what
 // the agent may be sent back, and writes the setup text (dash.js agent-setup). Claude Code is the default and is unchanged.
 const path = require('path');
 
-const AGENTS = ['claude', 'codex', 'copilot'];
+const AGENTS = ['claude', 'codex', 'copilot', 'antigravity'];
 // The events an agent takes extra context from. Its other output formats are not used, so nothing else is printed for it.
-const CONTEXT_EVENTS = { claude: null, codex: ['SessionStart'], copilot: ['SessionStart'] };
+const CONTEXT_EVENTS = { claude: null, codex: ['SessionStart'], copilot: ['SessionStart'], antigravity: ['SessionStart'] };
 // The events each agent is set up for (Copilot names them in camelCase).
-const SETUP_EVENTS = { codex: ['SessionStart', 'UserPromptSubmit', 'SessionEnd'], copilot: ['sessionStart', 'userPromptSubmitted', 'sessionEnd'] };
+const SETUP_EVENTS = {
+  codex: ['SessionStart', 'UserPromptSubmit', 'SessionEnd'],
+  copilot: ['sessionStart', 'userPromptSubmitted', 'sessionEnd'],
+  antigravity: ['SessionStart', 'PreInvocation', 'PostToolUse'],
+};
 const COPILOT_EVENTS = {
   sessionStart: 'SessionStart', sessionEnd: 'SessionEnd', userPromptSubmitted: 'UserPromptSubmit', preToolUse: 'PreToolUse',
   postToolUse: 'PostToolUse', agentStop: 'Stop', subagentStop: 'SubagentStop', errorOccurred: 'ErrorOccurred',
@@ -34,6 +38,20 @@ function normalize(agent, inp, event) {
     if (ti && Array.isArray(ti.command)) out.tool_input = Object.assign({}, ti, { command: ti.command.join(' ') });
     return out;
   }
+  if (agent === 'antigravity') {
+    // camelCase input: the session is conversationId, the folder is the first workspace path, and run_command is a shell call.
+    // PreInvocation counts as a new prompt only at the first model call of a turn (invocationNum 0); the others only keep the session alive.
+    const tc = o.toolCall && typeof o.toolCall === 'object' ? o.toolCall : {};
+    out.hook_event_name = event === 'PreInvocation' && o.invocationNum === 0 ? 'UserPromptSubmit' : event;
+    out.session_id = String(o.conversationId || '');
+    out.cwd = Array.isArray(o.workspacePaths) && o.workspacePaths.length ? String(o.workspacePaths[0]) : '';
+    if (typeof o.lastUserInput === 'string') out.prompt = o.lastUserInput;
+    const tool = String(tc.name || '');
+    out.tool_name = tool === 'run_command' ? 'Bash' : tool;
+    const args = tc.args && typeof tc.args === 'object' ? tc.args : {};
+    out.tool_input = tool === 'run_command' ? Object.assign({}, args, { command: String(args.CommandLine || '') }) : args;
+    return out;
+  }
   // copilot: camelCase or snake_case fields. The event name comes from the hook command when the input has none.
   const name = o.hook_event_name || o.hookEventName || event || '';
   out.hook_event_name = COPILOT_EVENTS[name] || name;
@@ -49,10 +67,12 @@ function normalize(agent, inp, event) {
 
 // What hook.js prints for an event: the text added to the agent's context, in that agent's JSON form. '' prints nothing.
 function output(agent, event, text) {
-  if (!text) return '';
+  const none = agent === 'antigravity' ? '{}' : '';   // Antigravity reads a JSON answer from every hook
+  if (!text) return none;
   const allowed = CONTEXT_EVENTS[agent];
-  if (allowed && !allowed.includes(event)) return '';
+  if (allowed && !allowed.includes(event)) return none;
   if (agent === 'copilot') return JSON.stringify({ additionalContext: text });
+  if (agent === 'antigravity') return JSON.stringify({ injectSteps: [{ systemMessage: { systemMessage: text } }] });
   return JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: text } });
 }
 
@@ -87,6 +107,15 @@ Write all dashboard texts in English, in simple words, no jargon (the user may n
 function hookConfig(agent, scriptsDir) {
   const hook = path.join(scriptsDir, 'hook.js').replace(/\\/g, '/');
   const cmd = (ev) => `node "${hook}" --agent ${agent} --event ${ev}`;
+  if (agent === 'antigravity') {
+    // Antigravity's hooks.json: one named block, each event a list of handlers (with an optional matcher).
+    const one = (ev, timeout, matcher) => {
+      const item = { hooks: [{ type: 'command', command: cmd(ev), timeout }] };
+      if (matcher) item.matcher = matcher;
+      return [item];
+    };
+    return { 'agent-dashboard': { SessionStart: one('SessionStart', 10), PreInvocation: one('PreInvocation', 10), PostToolUse: one('PostToolUse', 10, '*') } };
+  }
   if (agent === 'codex') {
     const one = (ev, timeout) => [{ hooks: [{ type: 'command', command: cmd(ev), timeout }] }];
     return { hooks: { SessionStart: one('SessionStart', 10), UserPromptSubmit: one('UserPromptSubmit', 10), SessionEnd: one('SessionEnd', 3) } };
@@ -103,6 +132,14 @@ function hookConfig(agent, scriptsDir) {
 function setupText(agent, scriptsDir) {
   const json = JSON.stringify(hookConfig(agent, scriptsDir), null, 2);
   const guide = guideText(scriptsDir, agent);
+  if (agent === 'antigravity') {
+    return [
+      '1) Merge the "agent-dashboard" block below into ~/.gemini/config/hooks.json (keep your own hooks). That file is shared by the Antigravity app, CLI and IDE.',
+      '2) Restart Antigravity. Check the hooks in the agent panel: the ... menu > Customizations > Hooks.',
+      '3) Nothing else to add: the hook sends the dashboard instructions at the start of each conversation.',
+      '', json,
+    ].join('\n');
+  }
   if (agent === 'codex') {
     return [
       '1) Merge the "hooks" below into ~/.codex/hooks.json (keep your own hooks).',

@@ -300,5 +300,5 @@ function main(inp) {
     if (gone || now - (x.lastSeen || 0) > 6 * 3600e3) delete st.sessions[k];
   }
   S.save(root, st);
-  if (out) emit(event, out);
+  emit(event, out);   // output() decides: Claude and the others print nothing, Antigravity always gets a JSON answer
 }
