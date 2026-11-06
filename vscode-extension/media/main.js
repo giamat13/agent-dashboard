@@ -542,7 +542,7 @@
       const reset = x.resetsAt ? (x.resetsAt > now ? 'resets in ' + resetDur((x.resetsAt - now) / 1000) : 'resetting…') : '';
       const pl = planned && planned[key] ? planned[key] : null;   // the running task's planned share (dashed line)
       if (compact) return '<div class="urow compact"><div class="uh"><b>' + label + '</b><span>' + p + '%' + (reset ? ' <span class="muted">· ' + reset + '</span>' : '') + '</span></div>' + usageBar(p, cls, pl) + '</div>';
-      const plan = pl ? 'planned ~' + Math.round(pl.expect) + '% when this task ends' : '';
+      const plan = pl ? 'planned ~' + Math.round(pl.expect) + '% when this task ends' + (pl.by === 'claude' ? ' (estimate by Claude)' : '') : '';
       const meta = [reset, plan].filter(Boolean).join(' · ');
       return '<div class="urow"><div class="uh"><b>' + label + '</b><span>' + p + '%</span></div>' + usageBar(p, cls, pl) + (meta ? '<div class="meta">' + meta + '</div>' : '') + '</div>';
     };

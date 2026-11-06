@@ -53,6 +53,12 @@ Every `job start <name>` gets `--eta 3m` (your best guess). Without it the "Runn
 - A GitHub Actions run gets the usual time of its workflow. If a workflow usually takes a different time, set it: `DASH ci-eta "<workflow name>" 6m`. Remove it with `DASH ci-eta clear "<workflow name>"`. Use the name as GitHub shows it.
 - `DASH usage` prints the Claude limits (5-hour and weekly).
 
+## Planned usage (your estimate per task)
+
+- Once the TODO list is set, before the first item goes in_progress: `DASH plan history` lists the finished tasks (their TODO items, the share of the limits each used, and the estimate that was set). Read it.
+- Then `DASH plan set --five <points> --weekly <points> --why "<short reason>"`. Points are % points of the limit the whole list will use; `0` for a limit the task will not touch. With no history, estimate from the size of the list and say so in `--why`.
+- The usage card shows your estimate as a dashed line once the task starts. Set it once per task.
+
 ## Estimates must add up
 
 A step estimate must not exceed the total estimate, and sub-steps must not add up to more than their step. The dashboard shows a warning banner and `dash.js` prints WARNING when they do not. When you see it, fix it right away (`eta <time> --total`, or lower the step/sub-step estimate).

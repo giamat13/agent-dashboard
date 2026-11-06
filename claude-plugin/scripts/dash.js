@@ -7,6 +7,7 @@ const S = require('./lib/state');
 const Settings = require('./lib/settings');
 const USAGE = require('./lib/usage');
 const Agents = require('./lib/agents');
+const PLANNED = require('./lib/planned');
 
 const argv = process.argv.slice(2);
 const flags = {};
@@ -303,6 +304,22 @@ switch (cmd) {
     }
     break;
   }
+  case 'plan': {
+    // plan history: the finished tasks, to compare with. plan set --five <points> --weekly <points> --why "<reason>": Claude's estimate for this session's next task.
+    if (sub === 'history') { console.log(PLANNED.history(root, Number(flags.n) || undefined)); break; }
+    if (sub === 'set') {
+      try {
+        const e = PLANNED.set(root, st.session, { five: flags.five, weekly: flags.weekly, why: typeof flags.why === 'string' ? flags.why : '' }, now);
+        const parts = [];
+        if (e.five !== null) parts.push('5-hour ' + e.five + ' points');
+        if (e.weekly !== null) parts.push('weekly ' + e.weekly + ' points');
+        console.log('Estimate set for the next task: ' + parts.join(', ') + '. It shows on the usage card when the task starts.');
+      } catch (err) { die(err.message); }
+      break;
+    }
+    die('Usage: plan history | plan set --five <points> --weekly <points> --why "<reason>"');
+    break;
+  }
   case 'ci-eta': {
     // ci-eta "<job name>" <time> | ci-eta clear "<job name>": how long a GitHub Actions job should take. The GitHub card shows it.
     if (sub === 'clear') { if (st.ciEta) delete st.ciEta[String(arg || '')]; console.log('Cleared: ' + (arg || '')); break; }
@@ -339,7 +356,7 @@ switch (cmd) {
     break;
   }
   default:
-    die('Usage: dash.js run start|done|fail | step start|done|fail | sub add|start|done | eta <time> [--total] | now "..." | log "..." | job add|start|done|fail|live | todo set|add|doing|done | status | reset | clear | settings [get|set] | usage [--json] | ci-eta "<job>" <time> | agent-setup codex|copilot|antigravity');
+    die('Usage: dash.js run start|done|fail | step start|done|fail | sub add|start|done | eta <time> [--total] | now "..." | log "..." | job add|start|done|fail|live | todo set|add|doing|done | status | reset | clear | settings [get|set] | usage [--json] | plan history|set | ci-eta "<job>" <time> | agent-setup codex|copilot|antigravity');
 }
 
 // The run's total time left must cover the steps still to do. When it does not, the dashboard works it out from the steps

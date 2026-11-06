@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.22
+- Claude picks the planned usage of each task itself. Before the first item goes in_progress, it reads the finished tasks with `dash.js plan history` (their TODO items, the share of the 5-hour and weekly limits each used, and the estimate that was set) and sets its estimate with `dash.js plan set --five <points> --weekly <points> --why "<reason>"`. The usage card shows it as the dashed line, marked "estimate by Claude". A window Claude leaves out uses the median of the last finished tasks, as before.
+- Each finished task is recorded with its TODO items and the estimate that was set for it.
+
 ## 0.4.21
 - The planned usage is back on the usage card: the 5-hour and weekly limit bars show a dashed line at the share the running task is expected to reach when it ends. A task is the whole TODO list of a session: it starts when an item is in progress and is recorded when every item is completed. The estimate is the median of the last 10 finished tasks, kept in `.agent-dashboard/planned.json`. No line shows until a task has finished once.
 
