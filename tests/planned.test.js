@@ -24,17 +24,20 @@ const { bar, planInfo, plannedOf, usageHtml } = new Function('esc', 'resetDur', 
 const T = 1000;
 const start = { at: T, weekly: 10, fiveHour: 40 };
 const est = (over) => Object.assign({ kind: 'similar', n: 3, model: 'opus', sameModel: true, weekly: 8, fiveHour: 20, at: T }, over);
-const task = (s, e) => ({ status: 'in_progress', content: 'Write the readme', usageStart: s, usageEst: e });
+const task = (s, e) => ({ text: 'Write the readme', start: s, est: e });   // the whole task (st.usageTask)
 const usage = (fiveHour, weekly) => ({ fiveHour: { pct: fiveHour, resetsAt: null }, weekly: { pct: weekly, resetsAt: null }, opus: null, fetchedAt: T });
 
 try {
-  // The planned part is the estimate minus what this task has used so far.
-  assert.deepStrictEqual(planInfo(task(start, est()), 'weekly', usage(45, 14)), { width: 4, text: '+~4% planned (3 similar tasks, opus)' });
-  assert.deepStrictEqual(planInfo(task(start, est()), 'fiveHour', usage(45, 14)), { width: 15, text: '+~15% planned (3 similar tasks, opus)' });
-  console.log('ok - planned = estimate minus what the task has used');
+  // The planned part is the estimate minus what this task has used so far. The text is the share expected at 100% progress:
+  // where the task started plus the estimate.
+  assert.deepStrictEqual(planInfo(task(start, est()), 'weekly', usage(45, 14)), { width: 4, text: 'planned at 100%: ~18% (3 similar tasks, opus)' });
+  assert.deepStrictEqual(planInfo(task(start, est()), 'fiveHour', usage(45, 14)), { width: 15, text: 'planned at 100%: ~60% (3 similar tasks, opus)' });
+  console.log('ok - planned = estimate minus what the task has used; text = share at 100%');
 
-  // Never more than what is left of the limit.
-  assert.strictEqual(planInfo(task({ at: T, weekly: 50, fiveHour: 50 }, est({ weekly: 80 })), 'weekly', usage(60, 60)).width, 40);
+  // Never more than what is left of the limit; the text stops at 100%.
+  const capped = planInfo(task({ at: T, weekly: 50, fiveHour: 50 }, est({ weekly: 80 })), 'weekly', usage(60, 60));
+  assert.strictEqual(capped.width, 40);
+  assert.ok(capped.text.startsWith('planned at 100%: ~100%'), capped.text);
   console.log('ok - capped at what is left of the limit');
 
   // The average of a model, and similar tasks of other models.
@@ -44,22 +47,23 @@ try {
 
   // No estimate yet: "no data yet". No numbers for this task, or no number for this limit: nothing planned.
   assert.deepStrictEqual(planInfo(task(start, undefined), 'weekly', usage(45, 14)), { width: 0, text: 'no data yet' });
-  assert.strictEqual(planInfo({ status: 'in_progress', content: 'x' }, 'weekly', usage(45, 14)), null);
+  assert.strictEqual(planInfo({ text: 'x', start: null }, 'weekly', usage(45, 14)), null, 'no start: nothing planned');
   assert.strictEqual(planInfo(task(start, est()), 'opus', usage(45, 14)), null);
   console.log('ok - no estimate: "no data yet"; no numbers: nothing planned');
 
-  // The newest task in progress, from this session or from another one. Completed tasks are not picked.
+  // The newest open task (the whole list), from this session or from another one. A task without a start is not picked.
   const st = {
-    todos: [{ status: 'in_progress', usageStart: { at: 5 } }],
+    usageTask: { text: 'a', start: { at: 5 } },
     sessions: {
-      a: { todos: [{ status: 'completed', usageStart: { at: 99 } }] },
-      b: { todos: [{ status: 'in_progress', usageStart: { at: 9 } }] },
+      a: { usageTask: undefined },
+      b: { usageTask: { text: 'b', start: { at: 9 } } },
+      c: { usageTask: { text: 'c', start: null } },
     },
   };
-  assert.strictEqual(plannedOf(st).usageStart.at, 9);
-  assert.strictEqual(plannedOf({ todos: [] }), null);
+  assert.strictEqual(plannedOf(st).start.at, 9);
+  assert.strictEqual(plannedOf({ usageTask: null, sessions: {} }), null);
   assert.strictEqual(plannedOf(null), null);
-  console.log('ok - the newest task in progress is picked');
+  console.log('ok - the newest open task is picked');
 
   // The striped part starts where the used part ends and never runs past the end of the bar.
   assert.ok(bar(90, 'bad', { width: 30 }).includes('left:90%;width:10%'));
@@ -71,7 +75,7 @@ try {
   const withPlan = usageHtml(usage(45, 14), Date.now(), task(start, est()), true);
   assert.ok(withPlan.includes('left:14%;width:4%'), 'striped part on the weekly bar');
   assert.ok(withPlan.includes('left:45%;width:15%'), 'striped part on the 5-hour bar');
-  assert.ok(withPlan.includes('+~4% planned (3 similar tasks, opus)') && withPlan.includes('+~15% planned'), 'text on both rows');
+  assert.ok(withPlan.includes('planned at 100%: ~18% (3 similar tasks, opus)') && withPlan.includes('planned at 100%: ~60%'), 'text on both rows');
   assert.ok(!usageHtml(usage(45, 14), Date.now(), task(start, est()), false).includes('planned'), 'switch off: nothing planned');
   assert.ok(!usageHtml(usage(45, 14), Date.now(), null, true).includes('planned'), 'no task in progress: nothing planned');
   assert.ok(usageHtml({ error: 'not-logged-in' }, Date.now(), null, true).includes('Not signed in'));

@@ -78,72 +78,87 @@ try {
   assert.strictEqual(est.weekly, 70); // the five newest: 90, 80, 70, 60, 50
   console.log('ok - at most 5 similar tasks, the newest first');
 
-  // A task starts: the limits are noted with the estimate. It ends a minute later: what it used goes into the log.
+  // The whole task (its TODO list) starts with its first item in_progress: the limits are noted with the estimate.
+  // It keeps its start while the next items run, and ends when every item is completed: one entry for the whole list.
   reading = ok(40, 10);
   let st = newSt(LOG);
-  let t = { id: '1', content: 'Write the readme ~5m', status: 'in_progress' };
-  USAGE.startTask(st, t, 1000, BOTH);
-  assert.deepStrictEqual(t.usageStart, { at: 1000, weekly: 10, fiveHour: 40 });
-  assert.strictEqual(t.usageEst.kind, 'similar');
-  assert.strictEqual(t.usageEst.at, 1000);
+  let list = [
+    { id: '1', content: 'Write the readme ~5m', status: 'in_progress' },
+    { id: '2', content: 'Fix the login bug', status: 'pending' },
+  ];
+  USAGE.trackTask(st, list, 1000, BOTH);
+  assert.deepStrictEqual(st.usageTask.start, { at: 1000, weekly: 10, fiveHour: 40 });
+  assert.strictEqual(st.usageTask.est.kind, 'similar');
+  assert.strictEqual(st.usageTask.est.at, 1000);
+  assert.strictEqual(st.usageTask.text, 'Write the readme Fix the login bug');
+  list[0].status = 'completed';
+  list[1].status = 'in_progress';
+  reading = ok(44, 12);
+  USAGE.trackTask(st, list, 30000, BOTH);
+  assert.strictEqual(st.usageTask.start.at, 1000, 'the next item does not restart the task');
   reading = ok(45, 14);
-  USAGE.finishTask(st, t, 61000, BOTH);
-  assert.strictEqual(t.usageStart, undefined);
-  assert.strictEqual(t.usageEst, undefined);
-  assert.deepStrictEqual(st.usageLog[st.usageLog.length - 1], { text: 'Write the readme', model: 'opus', weekly: 4, fiveHour: 5, at: 61000 });
+  list[1].status = 'completed';
+  USAGE.trackTask(st, list, 61000, BOTH);
+  assert.strictEqual(st.usageTask, undefined);
+  assert.deepStrictEqual(st.usageLog[st.usageLog.length - 1], { text: 'Write the readme Fix the login bug', model: 'opus', weekly: 4, fiveHour: 5, at: 61000 });
   assert.strictEqual(st.usageLog.length, LOG.length + 1);
-  console.log('ok - a finished task is recorded: weekly +4%, 5-hour +5%');
+  console.log('ok - a finished task is recorded once, for the whole list: weekly +4%, 5-hour +5%');
 
   // A limit that went down during the task was reset in between: nothing is recorded.
   st = newSt();
-  t = { id: '1', content: 'Build it', status: 'in_progress' };
+  list = [{ id: '1', content: 'Build it', status: 'in_progress' }];
   reading = ok(50, 50);
-  USAGE.startTask(st, t, 1000, BOTH);
+  USAGE.trackTask(st, list, 1000, BOTH);
   reading = ok(5, 5);
-  USAGE.finishTask(st, t, 61000, BOTH);
+  list[0].status = 'completed';
+  USAGE.trackTask(st, list, 61000, BOTH);
   assert.strictEqual(st.usageLog.length, 0);
   console.log('ok - a limit reset during a task is not recorded');
 
   // Switches: with both off nothing is read; each one works on its own.
   asked = 0;
   reading = ok(20, 20);
+  const OFF = { usageEstimate: false, usageRecord: false };
   st = newSt(LOG);
-  t = { id: '1', content: 'Write the readme', status: 'in_progress' };
-  USAGE.startTask(st, t, 1000, { usageEstimate: false, usageRecord: false });
-  USAGE.finishTask(st, t, 61000, { usageEstimate: false, usageRecord: false });
+  list = [{ id: '1', content: 'Write the readme', status: 'in_progress' }];
+  USAGE.trackTask(st, list, 1000, OFF);
+  list[0].status = 'completed';
+  USAGE.trackTask(st, list, 61000, OFF);
   assert.strictEqual(asked, 0, 'both off: the usage endpoint is not asked');
-  assert.strictEqual(t.usageStart, undefined);
+  assert.strictEqual(st.usageTask, undefined);
   assert.strictEqual(st.usageLog.length, LOG.length);
 
   st = newSt(LOG);
-  t = { id: '1', content: 'Write the readme', status: 'in_progress' };
-  USAGE.startTask(st, t, 1000, { usageEstimate: true, usageRecord: false });
-  assert.ok(t.usageStart && t.usageEst, 'estimate only: the start and the estimate are kept');
-  USAGE.finishTask(st, t, 61000, { usageEstimate: true, usageRecord: false });
+  list = [{ id: '1', content: 'Write the readme', status: 'in_progress' }];
+  USAGE.trackTask(st, list, 1000, { usageEstimate: true, usageRecord: false });
+  assert.ok(st.usageTask.start && st.usageTask.est, 'estimate only: the start and the estimate are kept');
+  list[0].status = 'completed';
+  USAGE.trackTask(st, list, 61000, { usageEstimate: true, usageRecord: false });
   assert.strictEqual(st.usageLog.length, LOG.length, 'estimate only: nothing is recorded');
 
   st = newSt(LOG);
-  t = { id: '1', content: 'Write the readme', status: 'in_progress' };
-  USAGE.startTask(st, t, 1000, { usageEstimate: false, usageRecord: true });
-  assert.ok(t.usageStart, 'record only: the start is kept');
-  assert.strictEqual(t.usageEst, undefined, 'record only: no estimate');
+  list = [{ id: '1', content: 'Write the readme', status: 'in_progress' }];
+  USAGE.trackTask(st, list, 1000, { usageEstimate: false, usageRecord: true });
+  assert.ok(st.usageTask.start, 'record only: the start is kept');
+  assert.strictEqual(st.usageTask.est, undefined, 'record only: no estimate');
   console.log('ok - switches: both off reads nothing; each one works alone');
 
   // The endpoint fails: no numbers, and it is not asked again until the wait is over.
   asked = 0;
   reading = { ok: false, error: 'network' };
   st = newSt();
-  t = { id: '1', content: 'Write the readme', status: 'in_progress' };
-  USAGE.startTask(st, t, 1000, BOTH);
-  assert.strictEqual(t.usageStart, undefined);
+  list = [{ id: '1', content: 'Write the readme', status: 'in_progress' }];
+  USAGE.trackTask(st, list, 1000, BOTH);
+  assert.strictEqual(st.usageTask.start, null, 'no numbers: the task is known, without a start');
   assert.strictEqual(st.usageSnap.ok, false);
   assert.strictEqual(st.usageSnap.retryAt, 1000 + 60 * 1000);
   const before = asked;
-  USAGE.startTask(st, t, 30000, BOTH);
+  USAGE.trackTask(st, list, 30000, BOTH);
   assert.strictEqual(asked, before, 'while waiting: not asked');
   reading = ok(30, 30);
-  assert.ok(USAGE.current(st, 61001), 'after the wait: asked again');
-  console.log('ok - a failed read is not repeated for a minute');
+  USAGE.trackTask(st, list, 61001, BOTH);
+  assert.deepStrictEqual(st.usageTask.start, { at: 61001, weekly: 30, fiveHour: 30 }, 'after the wait: the start is taken');
+  console.log('ok - a failed read is not repeated for a minute, and the start is taken later');
 
   // Rate limited: the wait is ten minutes.
   reading = { ok: false, status: 429 };
@@ -179,15 +194,18 @@ try {
   const info = JSON.parse(r.stdout);
   assert.strictEqual(info.error, 'not-logged-in');
   assert.strictEqual(info.weekly, null);
-  assert.strictEqual(info.task, 'Write the readme');
+  assert.strictEqual(info.task, 'Write the readme Fix the login bug');
   assert.strictEqual(info.expected, null);
   r = cli('usage');
   assert.strictEqual(r.status, 0, r.stderr);
-  assert.ok(/Weekly limit: \?/.test(r.stdout) && /Task in progress: Write the readme/.test(r.stdout), r.stdout);
+  assert.ok(/Weekly limit: \?/.test(r.stdout) && /Task in progress: Write the readme Fix the login bug/.test(r.stdout), r.stdout);
   r = cli('todo', 'doing', '2');
+  assert.strictEqual(r.status, 0, r.stderr);
+  r = cli('todo', 'done', '1');
   assert.strictEqual(r.status, 0, r.stderr);
   r = cli('todo', 'done', '2');
   assert.strictEqual(r.status, 0, r.stderr);
+  assert.ok(!S.load(tmp).usageTask, 'every item done: the task is closed');
   console.log('ok - usage and todo commands work without a login');
 
   r = cli('ci-eta', 'build', '4m');

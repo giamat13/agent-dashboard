@@ -258,33 +258,19 @@ switch (cmd) {
       return { id: String(i + 1), content: t.trim(), activeForm: t.trim(), status };
     };
     if (sub === 'set') {
-      const prev = new Map((st.todos || []).map((t) => [USAGE.plainText(t), t]));
       st.todos = String(arg || die('Missing items: "a|b|c"')).split('|').filter((x) => x.trim()).map(mk);
-      // Same bookkeeping as the hook: a task that starts or finishes here gets its usage numbers.
-      const cfg = Settings.read();
-      st.todos.forEach((t) => {
-        const o = prev.get(USAGE.plainText(t)) || {};
-        if (t.status === 'in_progress' || t.status === 'completed') {
-          if (o.usageStart) t.usageStart = o.usageStart;
-          if (o.usageEst && t.status === 'in_progress') t.usageEst = o.usageEst;
-        }
-        if (t.status === 'in_progress' && o.status !== 'in_progress') USAGE.startTask(st, t, now, cfg);
-        else if (t.status === 'completed' && o.status && o.status !== 'completed') USAGE.finishTask(st, t, now, cfg);
-      });
+      // Same bookkeeping as the hook: the whole list is one planned task (lib/usage.js trackTask).
+      USAGE.trackTask(st, st.todos, now, Settings.read());
     } else if (sub === 'add') {
       st.todos.push(mk(String(arg || die('Missing text')), st.todos.length));
     } else if (['doing', 'done', 'pending'].includes(sub)) {
       const t = st.todos.find((x) => x.id === String(arg));
       if (!t) die('No such TODO: ' + arg);
-      const before = t.status;
       t.status = sub === 'doing' ? 'in_progress' : sub === 'done' ? 'completed' : 'pending';
       if (t.status === 'in_progress') t.startedAt = now; else if (t.status === 'completed') { t.endedAt = now; if (!t.startedAt) t.startedAt = now; }
-      // Plan usage: the same bookkeeping the hook does when a task changes (lib/usage.js).
-      const cfg = Settings.read();
-      if (t.status === 'in_progress' && before !== 'in_progress') USAGE.startTask(st, t, now, cfg);
-      else if (t.status === 'completed' && before !== 'completed') USAGE.finishTask(st, t, now, cfg);
-      else if (t.status === 'pending') { delete t.usageStart; delete t.usageEst; }
-    } else if (sub === 'clear') st.todos = [];
+      // Plan usage covers the whole list (lib/usage.js trackTask), the same as the hook.
+      USAGE.trackTask(st, st.todos, now, Settings.read());
+    } else if (sub === 'clear') { st.todos = []; delete st.usageTask; }
     else die('Usage: todo set "a|[~] b|[x] c" | todo doing|done|pending <n> | todo clear');
     console.log('TODOs: ' + st.todos.map((t) => `${t.id}.[${t.status}] ${t.content}`).join(' ; '));
     break;
@@ -310,14 +296,14 @@ switch (cmd) {
     // usage [--json]: the plan limits right now, and what the task in progress is expected to use.
     const cfg = Settings.read();
     const snap = USAGE.current(st, now);
-    const running = (st.todos || []).find((t) => t.status === 'in_progress') || null;
+    const task = st.usageTask || null;   // the whole task (its TODO list) while it is open
     const pick = (x) => (x ? { pct: Math.round(x.pct), resetsAt: x.resetsAt || null } : null);
     const info = {
       weekly: snap ? pick(snap.weekly) : null,
       fiveHour: snap ? pick(snap.fiveHour) : null,
       error: snap ? null : (st.usageSnap && st.usageSnap.error) || 'not read yet',
-      task: running ? USAGE.plainText(running) : null,
-      expected: cfg.usageEstimate && running && running.usageEst ? running.usageEst : null,
+      task: task ? task.text : null,
+      expected: cfg.usageEstimate && task && task.est ? task.est : null,
     };
     if (flags.json) console.log(JSON.stringify(info, null, 1));
     else {
@@ -379,5 +365,5 @@ if (live && ['run', 'step', 'sub', 'eta', 'job', 'now'].includes(cmd)) {
 }
 
 // Keep this session's own slice in sync, otherwise the next hook would overwrite todos/goal set here.
-if (st.session && st.sessions && st.sessions[st.session]) Object.assign(st.sessions[st.session], { todos: st.todos, goal: st.goal });
+if (st.session && st.sessions && st.sessions[st.session]) Object.assign(st.sessions[st.session], { todos: st.todos, goal: st.goal, usageTask: st.usageTask || null });
 S.save(root, st);

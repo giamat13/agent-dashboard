@@ -22,6 +22,13 @@ Setting: `agentDashboard.staleMinutes` (default 3) — minutes of silence before
 
 MIT © GIAMAT13
 
+## New in 0.4.5
+
+- **Empty cards are left out**, so only cards with something to show appear.
+- **Compact usage card**: the Compact / Full button on the usage card shows each limit on one line.
+- **Screenshots Claude read**: switch on "Show screenshots Claude reads" in the settings (gear). When Claude reads a PNG or JPG, the picture appears in the dashboard. Copies stay in `.agent-dashboard` in the project, never in git.
+- **Planned usage** works while Anthropic limits the usage checks: it starts from the last numbers read (shown as "limits read earlier").
+
 ## New in 0.4.4
 
 - **Google Antigravity**: its sessions show the Antigravity icon. Progress: run `dash.js agent-setup antigravity` (in the plugin's `scripts` folder) and it prints the hook settings for `~/.gemini/config/hooks.json`. Nothing is written for you. There are no Antigravity limits in the panel, because Google publishes no numbers for them.

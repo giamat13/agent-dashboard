@@ -13,9 +13,12 @@ const ext = require('../vscode-extension/lib/settings');
 const fileOf = () => path.join(tmp, '.agent-dashboard', 'settings.json');
 
 try {
-  // Defaults: six switches, all on, and the two copies of the list agree.
-  assert.strictEqual(Object.keys(plugin.DEFAULTS).length, 6);
-  assert.ok(Object.values(plugin.DEFAULTS).every((v) => v === true));
+  // Defaults: fifteen switches; the screenshots and Output switches are off, the others on, and the two copies of the list agree.
+  assert.strictEqual(Object.keys(plugin.DEFAULTS).length, 16);
+  assert.strictEqual(plugin.DEFAULTS.showScreenshots, false);
+  assert.strictEqual(plugin.DEFAULTS.screenshotsFullscreen, false);
+  assert.strictEqual(plugin.DEFAULTS.showOutput, false);
+  assert.ok(Object.entries(plugin.DEFAULTS).filter(([k]) => !['showScreenshots', 'screenshotsFullscreen', 'showOutput'].includes(k)).every(([, v]) => v === true));
   assert.deepStrictEqual(ext.DEFAULTS, plugin.DEFAULTS);
   assert.ok(!fs.existsSync(fileOf()));
   assert.deepStrictEqual(plugin.read(), plugin.DEFAULTS);
@@ -44,7 +47,7 @@ try {
   assert.strictEqual(got.usageEstimate, false);
   assert.strictEqual(got.pluginAutoUpdate, true);
   assert.ok(!('bogus' in got));
-  assert.strictEqual(Object.keys(got).length, 6);
+  assert.strictEqual(Object.keys(got).length, 16);
   console.log('ok - unknown keys and bad values are ignored');
 
   // A broken file gives the defaults, not an error.

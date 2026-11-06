@@ -111,15 +111,9 @@ function stampTodos(st, todos, prev, now, cfg) {
     const o = old.get(todoKey(t)) || {};
     if (t.status === 'in_progress') t.startedAt = o.startedAt && o.status === 'in_progress' ? o.startedAt : now;
     else if (t.status === 'completed') { t.startedAt = o.startedAt; t.endedAt = o.endedAt && o.status === 'completed' ? o.endedAt : now; }
-    // Plan usage: where the limits stand when a task starts, and what it used when it ends. The list is rebuilt on every
-    // call, so the numbers are carried over from the previous state of the same task first.
-    if (t.status === 'in_progress' || t.status === 'completed') {
-      if (o.usageStart) t.usageStart = o.usageStart;
-      if (o.usageEst && t.status === 'in_progress') t.usageEst = o.usageEst;
-    }
-    if (t.status === 'in_progress' && o.status !== 'in_progress') USAGE.startTask(st, t, now, cfg);
-    else if (t.status === 'completed' && o.status && o.status !== 'completed') USAGE.finishTask(st, t, now, cfg);
   });
+  // Plan usage covers the whole list (the task), not one item: see lib/usage.js trackTask.
+  USAGE.trackTask(st, todos, now, cfg);
 }
 
 function syncTodos(st, inp) {
@@ -209,6 +203,33 @@ function parseGoal(txt) {
 // The instructions for this agent (Claude, Codex or Copilot). Built in lib/agents.js.
 const GUIDE = Agents.guideText(__dirname, AGENT);
 
+// Screenshots: when Claude reads a picture (PNG, JPG, ...), a copy goes to <project>/.agent-dashboard/shots so the dashboard
+// can show it. Only with the "showScreenshots" switch on. The folder is ignored by git (.agent-dashboard/.gitignore).
+const SHOT_EXT = /\.(png|jpe?g|gif|webp)$/i;
+const SHOT_MAX_BYTES = 5 * 1024 * 1024;
+const SHOTS_KEEP = 6;
+function captureShot(st, root, inp, now) {
+  const given = String((inp.tool_input && inp.tool_input.file_path) || '');
+  if (!SHOT_EXT.test(given) || !Settings.read().showScreenshots) return;
+  const src = path.resolve(inp.cwd || root, given);
+  try {
+    const stat = fs.statSync(src);
+    if (!stat.isFile() || stat.size > SHOT_MAX_BYTES) return;
+  } catch { return; }
+  const name = path.basename(src);
+  const dir = path.join(root, '.agent-dashboard', 'shots');
+  const copy = now + '-' + name.replace(/[^\w.-]+/g, '_');
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.copyFileSync(src, path.join(dir, copy));
+  } catch { return; }
+  st.shots = (st.shots || []).concat([{ file: 'shots/' + copy, name, at: now }]);
+  for (const old of st.shots.splice(0, Math.max(0, st.shots.length - SHOTS_KEEP))) {
+    try { fs.unlinkSync(path.join(root, '.agent-dashboard', old.file)); } catch { /* already gone */ }
+  }
+  S.logActivity(st, 'Claude read the picture ' + name, now);
+}
+
 function main(inp) {
   const event = inp.hook_event_name;
   const root = S.findRoot(inp.cwd);
@@ -228,6 +249,7 @@ function main(inp) {
   if (!ss.agent) ss.agent = AGENT;
   const prevTodos = (ss.todos || []).map((t) => Object.assign({}, t));
   st.todos = ss.todos || []; st.goal = ss.goal || null; st.context = ss.context || null; st.todoSync = ss.todoSync;
+  st.usageTask = ss.usageTask || null;   // the planned task of this session (lib/usage.js)
   const ctx = readContext(inp.transcript_path, inp.cwd);
   if (ctx) st.context = ctx;
   st.session = sid;
@@ -251,7 +273,7 @@ function main(inp) {
     }
   } else if (event === 'UserPromptSubmit' && typeof inp.prompt === 'string' && !inp.prompt.trim().startsWith('/') &&
              !(st.todos || []).some((t) => t.status !== 'completed')) {
-    out = `Agent Dashboard is ON and the user is watching it. If this task has 2+ steps, FIRST create the TODO list (${AGENT === 'claude' ? 'TodoWrite/TaskCreate; if you have neither: ' : ''}node "${DASH}" todo set "[~] current|next|another"), keep it updated as you go (in_progress when starting a step, completed right after), and wrap EVERY build/test/install/script command with wrap.js (or report it with dash.js run/step/now); do not judge by duration. Dashboard texts in simple English.`;
+    out = `Agent Dashboard is ON and the user is watching it. If this task has 2+ steps, FIRST create the TODO list (${AGENT === 'claude' ? 'TodoWrite/TaskCreate; if you have neither: ' : ''}node "${DASH}" todo set "[~] current|next|another"), keep it updated as you go (mark a step in_progress BEFORE you start its work, and completed the moment it is done; one in_progress at a time; the planned usage covers the WHOLE list, from its first in_progress item until every item is completed), and wrap EVERY build/test/install/script command with wrap.js (or report it with dash.js run/step/now); several tests in one run = one sub-step per test (--subs); do not judge by duration. Dashboard texts in simple English.`;
   } else if (event === 'PostToolUse' && /^(TodoWrite|TaskCreate|TaskUpdate)$/.test(inp.tool_name || '')) {
     syncTodos(st, inp);
   } else if (event === 'PreToolUse' || event === 'PostToolUse') {
@@ -278,6 +300,8 @@ function main(inp) {
     }
   }
 
+  if (event === 'PostToolUse' && inp.tool_name === 'Read') captureShot(st, root, inp, now);
+
   // Nudge: open tasks exist but the list has not been touched for several tool calls.
   if (event === 'PostToolUse') {
     if (todoTool || /dash\.js[^\n]*todo/.test(String((inp.tool_input && inp.tool_input.command) || ''))) ss.sinceTodo = 0;
@@ -292,7 +316,7 @@ function main(inp) {
 
   if (!ss.title && event === 'UserPromptSubmit' && typeof inp.prompt === 'string' && !inp.prompt.trim().startsWith('/')) ss.title = inp.prompt.trim().replace(/\s+/g, ' ').slice(0, 40);
   stampTodos(st, st.todos, prevTodos, now, AGENT === 'claude' ? Settings.read() : OFF_USAGE);
-  Object.assign(ss, { todos: st.todos, goal: st.goal, context: st.context, todoSync: st.todoSync, lastSeen: now, cwd: inp.cwd, transcript: inp.transcript_path || ss.transcript });
+  Object.assign(ss, { todos: st.todos, goal: st.goal, context: st.context, todoSync: st.todoSync, usageTask: st.usageTask, lastSeen: now, cwd: inp.cwd, transcript: inp.transcript_path || ss.transcript });
   for (const k of Object.keys(st.sessions)) {
     const x = st.sessions[k];
     if (k === sid) continue;

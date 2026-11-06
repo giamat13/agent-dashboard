@@ -11,6 +11,8 @@ const FAILED_MS = 60 * 1000;         // after any other failure: wait this long
 const SIMILAR = 0.3;                 // word overlap (Jaccard) from which two task texts count as similar
 const TOP = 5;                       // how many similar tasks an estimate uses
 const LOG_MAX = 300;                 // how many finished tasks are remembered
+const TEXT_MAX = 1000;               // how much of a task's text is kept in the log
+const STALE_START_MS = 20 * 60 * 1000; // a task may start from limit numbers this old when the endpoint cannot be read now
 const STOP = new Set(['the', 'and', 'for', 'with', 'from', 'into', 'this', 'that', 'all', 'a', 'an', 'of', 'to', 'in', 'on', 'is', 'it', 'be', 'by', 'or', 'as', 'at', 'new', 'use']);
 
 let fetchImpl = null;   // tests replace the network read with a fixed answer
@@ -31,6 +33,7 @@ function current(st, now) {
   const j = readNow() || {};
   if (j.ok) {
     st.usageSnap = { ok: true, at: now, fiveHour: j.fiveHour || null, weekly: j.weekly || null, opus: j.opus || null };
+    st.usageGood = st.usageSnap;   // the last numbers that were read: a task can still start from them while the endpoint is limited
     return st.usageSnap;
   }
   st.usageSnap = {
@@ -87,26 +90,47 @@ function estimate(st, text, model) {
   return null;
 }
 
-// A task has just started: remember where the limits stand, and what similar tasks used.
-function startTask(st, t, now, cfg) {
-  delete t.usageStart;
-  delete t.usageEst;
-  if (!cfg.usageEstimate && !cfg.usageRecord) return;
-  const snap = current(st, now);
-  if (!snap) return;
-  t.usageStart = { at: now, weekly: pct(snap.weekly), fiveHour: pct(snap.fiveHour) };
-  if (cfg.usageEstimate) {
-    const est = estimate(st, plainText(t), modelOf(st));
-    if (est) t.usageEst = Object.assign({ at: now }, est);
-  }
+// The whole task is one unit: its TODO list. It starts when an item goes in_progress while no task is open, and it ends
+// when every item is completed. The open task is kept as st.usageTask = { text, start, est }.
+function taskText(list) {
+  return list.map((t) => plainText(t)).filter(Boolean).join(' ');
+}
+function trackTask(st, todos, now, cfg) {
+  const list = Array.isArray(todos) ? todos : [];
+  if (!list.length || (!cfg.usageEstimate && !cfg.usageRecord)) { delete st.usageTask; return; }   // cleared, or both switches off
+  const running = list.some((t) => t.status === 'in_progress');
+  if (!st.usageTask && running) startTask(st, list, now, cfg);
+  else if (st.usageTask && !st.usageTask.start && running) readStart(st, st.usageTask, now);   // the numbers were not readable at the start
+  else if (st.usageTask && list.every((t) => t.status === 'completed')) finishTask(st, now, cfg);
 }
 
-// A task has just finished: record how much of each limit it used, for the estimates of later tasks.
-function finishTask(st, t, now, cfg) {
-  const start = t.usageStart;
-  delete t.usageStart;
-  delete t.usageEst;
-  if (!cfg.usageRecord || !start || typeof start.weekly !== 'number' || typeof start.fiveHour !== 'number') return;
+// The task has just started: what similar tasks used (the estimate), and where the limits stand (readStart).
+function startTask(st, list, now, cfg) {
+  const text = taskText(list);
+  const task = { text: text.slice(0, TEXT_MAX), start: null };
+  if (cfg.usageEstimate) {
+    const est = estimate(st, text, modelOf(st));
+    if (est) task.est = Object.assign({ at: now }, est);
+  }
+  st.usageTask = task;
+  readStart(st, task, now);
+}
+
+// Where the limits stand now: the live numbers when they can be read; else the last ones read, if they are recent (marked stale).
+function readStart(st, task, now) {
+  const fresh = current(st, now);
+  const base = fresh || (st.usageGood && now - st.usageGood.at < STALE_START_MS ? st.usageGood : null);
+  if (!base) return;
+  task.start = { at: now, weekly: pct(base.weekly), fiveHour: pct(base.fiveHour) };
+  if (!fresh) task.start.stale = true;   // the numbers were read earlier (the endpoint is limited now)
+}
+
+// The whole task has finished: record how much of each limit it used, for the estimates of later tasks.
+function finishTask(st, now, cfg) {
+  const task = st.usageTask;
+  delete st.usageTask;
+  const start = task && task.start;
+  if (!cfg.usageRecord || !start || start.stale || typeof start.weekly !== 'number' || typeof start.fiveHour !== 'number') return;
   const snap = current(st, now);
   if (!snap || !snap.weekly || !snap.fiveHour) return;
   const weekly = snap.weekly.pct - start.weekly;
@@ -114,10 +138,10 @@ function finishTask(st, t, now, cfg) {
   if (weekly < -0.5 || fiveHour < -0.5) return; // a limit reset during the task: the numbers mean nothing
   st.usageLog = st.usageLog || [];
   st.usageLog.push({
-    text: plainText(t).slice(0, 200), model: family(modelOf(st)),
+    text: task.text, model: family(modelOf(st)),
     weekly: round(Math.max(0, weekly)), fiveHour: round(Math.max(0, fiveHour)), at: now,
   });
   if (st.usageLog.length > LOG_MAX) st.usageLog.splice(0, st.usageLog.length - LOG_MAX);
 }
 
-module.exports = { current, estimate, startTask, finishTask, plainText, family, similarity, median, setFetchForTests, SIMILAR, TOP, LOG_MAX };
+module.exports = { current, estimate, trackTask, startTask, finishTask, taskText, plainText, family, similarity, median, setFetchForTests, SIMILAR, TOP, LOG_MAX };

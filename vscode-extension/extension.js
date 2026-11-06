@@ -188,22 +188,34 @@ function broadcast(force) {
   if (!force && ukey === lastKey) return;
   lastKey = ukey;
   for (const w of [...views, panel && panel.webview].filter(Boolean)) {
-    w.postMessage({ type: 'state', state, cfg: cfg(), usage, providers, settings, gh });
+    w.postMessage({ type: 'state', state: withShotUris(w, state, folder), cfg: cfg(), usage, providers, settings, gh });
   }
+}
+
+// The pictures Claude read (state.shots, files in <folder>/.agent-dashboard/shots): each gets an address this webview may load.
+// The folders are allowed in wire(); the file list itself is only ever the shots the hook wrote.
+function withShotUris(w, state, folder) {
+  if (!state || !Array.isArray(state.shots) || !state.shots.length || !folder) return state;
+  const shots = state.shots.map((s) => Object.assign({}, s, {
+    src: String(w.asWebviewUri(vscode.Uri.file(path.join(folder, '.agent-dashboard', String(s.file || ''))))),
+  }));
+  return Object.assign({}, state, { shots });
 }
 
 function html(webview) {
   const uri = (f) => webview.asWebviewUri(vscode.Uri.joinPath(ctx.extensionUri, 'media', f));
   const nonce = Math.random().toString(36).slice(2) + Date.now().toString(36);
   return `<!doctype html><html lang="en" dir="ltr"><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource}; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="${uri('main.css')}"></head>
 <body><div id="app">Loading…</div><script nonce="${nonce}" src="${uri('main.js')}"></script></body></html>`;
 }
 
 function wire(webview) {
-  webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(ctx.extensionUri, 'media')] };
+  // The media folder, and each open folder's .agent-dashboard (for the screenshots Claude read).
+  const roots = [vscode.Uri.joinPath(ctx.extensionUri, 'media')].concat((vscode.workspace.workspaceFolders || []).map((f) => vscode.Uri.joinPath(f.uri, '.agent-dashboard')));
+  webview.options = { enableScripts: true, localResourceRoots: roots };
   webview.html = html(webview);
   webview.onDidReceiveMessage((m) => {
     if (m.type === 'ready') broadcast(true);

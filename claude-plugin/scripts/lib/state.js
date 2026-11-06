@@ -18,7 +18,7 @@ function findRoot(start) {
 }
 
 const file = (root) => path.join(root, DIR, 'state.json');
-const empty = () => ({ version: 1, todos: [], context: null, runs: [], goal: null, sessions: {}, activity: [], history: {}, lastReminderAt: 0, updatedAt: Date.now() });
+const empty = () => ({ version: 1, todos: [], context: null, runs: [], goal: null, sessions: {}, activity: [], shots: [], history: {}, lastReminderAt: 0, updatedAt: Date.now() });
 
 // Live log: "what is happening right now" lines shown on the dashboard.
 function logActivity(st, text, at) {

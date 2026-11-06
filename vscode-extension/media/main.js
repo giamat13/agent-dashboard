@@ -4,6 +4,10 @@
   let S = null, cfg = { staleMinutes: 3 }, last = '', usage = null, hist = {}, gh = null, providers = null;
   let settings = null;             // the on/off settings from the extension (null until the first update)
   let settingsOpen = false;        // the gear popover
+  let usageCompact = false;        // the usage card in its compact view (remembered for this viewer)
+  let bigShot = null;              // the screenshot shown enlarged in its card (its time stamp), or null
+  let fullShot = null;             // the screenshot shown over the whole dashboard (its time stamp), or null
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && fullShot !== null) { fullShot = null; render(); } });
   const open = new Set();          // ids of <details> the user opened
   const shown = {};                // smoothed percentages (key -> value), so numbers glide instead of jumping
 
@@ -16,8 +20,21 @@
     if (e.target.closest && e.target.closest('#hist > summary')) e.preventDefault(); // run history stays open
     if (e.target.closest && e.target.closest('[data-gear]')) { settingsOpen = !settingsOpen; render(); return; }
     if (settingsOpen && !(e.target.closest && e.target.closest('.pop'))) { settingsOpen = false; render(); } // a click outside closes it
+    if (e.target.closest && e.target.closest('.fullshot')) { fullShot = null; render(); return; }
+    const shot = e.target.closest && e.target.closest('.shots figure');
+    if (shot) {
+      const at = Number(shot.getAttribute('data-at'));
+      if (settings && settings.screenshotsFullscreen === true) fullShot = at;
+      else bigShot = bigShot === at ? null : at;
+      render(); return;
+    }
+    if (e.target.closest && e.target.closest('[data-compact]')) {
+      usageCompact = !usageCompact;
+      try { vscode.setState(Object.assign({}, vscode.getState() || {}, { usageCompact })); } catch { /* ignore */ }
+      render(); return;
+    }
     const tab = e.target.closest && e.target.closest('[data-sid]');
-    if (tab) { sel = tab.getAttribute('data-sid'); try { vscode.setState({ sel }); } catch { /* ignore */ } render(); }
+    if (tab) { sel = tab.getAttribute('data-sid'); try { vscode.setState(Object.assign({}, vscode.getState() || {}, { sel })); } catch { /* ignore */ } render(); }
   });
   // A switch in the settings popover: keep it on screen at once, and tell the extension (it saves the file).
   app.addEventListener('change', (e) => {
@@ -29,7 +46,7 @@
     render();
   });
   let sel = null;
-  try { sel = (vscode.getState() || {}).sel || null; } catch { /* ignore */ }
+  try { const saved = vscode.getState() || {}; sel = saved.sel || null; usageCompact = !!saved.usageCompact; } catch { /* ignore */ }
 
   // Sessions of this project (the state file is per project). Shown as tabs when there is more than one.
   function sessionList(S) {
@@ -181,8 +198,14 @@
     const tDone = todos.filter((t) => t.status === 'completed').length;
     const running = run && run.status === 'running';
     const cur = run && run.steps.find((s) => s.status === 'doing');
+    // The whole task: when there is a TODO list, its done items count, and the item in progress counts with the progress of
+    // the running script (if any). Without a TODO list, the progress of the run's steps.
     let pct = run ? progress(run, now) : null;
-    if (pct === null && todos.length) pct = Math.round((tDone / todos.length) * 100);
+    if (todos.length) {
+      const running1 = todos.find((t) => t.status === 'in_progress');
+      const share = running1 && pct !== null ? pct / 100 : 0;
+      pct = Math.round(((tDone + share) / todos.length) * 100);
+    }
     const color = run && run.status === 'failed' ? 'var(--bad)' : run && run.status === 'done' ? 'var(--ok)' : 'var(--run)';
     const left = run ? runLeftOf(run, cur, now) : null;
 
@@ -298,7 +321,7 @@
   function activityHtml(S, run, now) {
     const items = (S.activity || []).slice(-14).reverse();
     let h = '<div class="card"><h3>What is happening</h3>';
-    if (!items.length) return h + '<div class="muted">Live lines show up here as Claude or a script reports them.</div></div>';
+    if (!items.length) return '';
     const lastAt = items[0].at;
     if (run && run.status === 'running' && now - lastAt > 300000) h += '<div class="banner"><b>Nothing new for ' + dur((now - lastAt) / 1000) + '.</b> It may be stuck.</div>';
     h += '<div class="act">' + items.map((a, i) => '<div class="ln' + (i === 0 ? ' first' : '') + (/^(FAILED|First failure|Failed)/.test(a.text) ? ' bad' : '') + '"><span class="ago">' + ago(now - a.at) + '</span><span>' + esc(a.text) + '</span></div>').join('') + '</div></div>';
@@ -339,7 +362,7 @@
     const todos = V.todos || [];
     const groups = V.groups;
     let h = '<div class="card"><h3>' + (groups ? 'Agent tasks (all sessions)' : agentIcon(V.curAgent) + 'Agent tasks') + '</h3>';
-    if (!todos.length) return h + '<div class="muted">No tasks yet. When Claude plans multi-step work, the list appears here.</div></div>';
+    if (!todos.length) return '';
     const done = todos.filter((t) => t.status === 'completed');
     h += '<div class="tasksum"><b>' + done.length + ' of ' + todos.length + '</b> <span class="muted">completed</span></div>' + bar(Math.round((done.length / todos.length) * 100), 'ok');
     if (!groups) return h + taskRows(todos, now, '') + '</div>';
@@ -411,6 +434,7 @@
     if (!gh || gh.error === 'off') return '';
     let h = '<div class="card gh"><h3>GitHub Actions' + (gh.repo ? ' <span class="muted">' + esc(gh.repo) + '</span>' : '') + '</h3>';
     if (gh.error) return h + '<div class="muted">' + esc(GH_ERRORS[gh.error] || GH_ERRORS.failed) + '</div></div>';
+    if (!gh.running.length && !gh.recent.length && !gh.pages) return '';
     if (!gh.running.length) h += '<div class="muted">Nothing running.</div>';
     h += gh.running.map((r) => {
       const queued = r.status === 'queued';
@@ -438,6 +462,15 @@
     return h + ghPagesHtml(gh.pages, now) + '</div>';
   }
 
+  // ---------- screenshots Claude read ----------
+  // Only with the "showScreenshots" switch on. The pictures are copies in <project>/.agent-dashboard/shots (see hook.js captureShot).
+  function shotsHtml(S, now) {
+    const shots = ((S && S.shots) || []).filter((s) => s && s.src);
+    if (!settings || settings.showScreenshots !== true || !shots.length) return '';
+    return '<div class="card"><h3>Screenshots Claude read</h3><div class="shots">' + shots.slice().reverse().map((s) =>
+      '<figure class="' + (s.at === bigShot ? 'big' : '') + '" data-at="' + esc(String(s.at || 0)) + '"><img src="' + esc(s.src) + '" alt="' + esc(s.name || 'screenshot') + '" loading="lazy"><figcaption>' + esc(s.name || '') + ' · ' + ago(now - (s.at || now)) + '</figcaption></figure>').join('') + '</div></div>';
+  }
+
   // ---------- run output ----------
   function outputHtml(run) {
     if (!run) return '';
@@ -453,7 +486,7 @@
 
   function contextHtml(c) {
     let h = '<div class="card"><h3>Agent memory in this chat</h3>';
-    if (!c) return h + '<div class="muted">Data appears after the next message.</div></div>';
+    if (!c) return '';
     const color = c.percent >= 85 ? 'var(--bad)' : c.percent >= 60 ? 'var(--warn)' : 'var(--ok)';
     const hint = c.percent >= 95 ? 'Claude is about to compact the chat automatically (it summarizes and small details are forgotten).' : c.percent >= 85 ? 'Close to auto-compact. Consider summarizing or starting a new chat.' : c.percent >= 60 ? 'Filling up. Soon it is worth summarizing.' : 'Plenty of room.';
     const ac = c.acTokens ? 'Auto-compact is set to ' + num(c.acTokens) + ' tokens (your autoCompactWindow setting); the bar is full when it is reached.' : c.acPct && c.acPct < 100 ? 'Auto-compact triggers at ' + c.acPct + '% of the window (' + num(c.window) + ' tokens); the bar is full when it is reached.' : 'Auto-compact is off; the bar is full at the end of the window.';
@@ -464,7 +497,7 @@
   function allContextHtml(groups) {
     const h = '<div class="card"><h3>Agent memory in each chat</h3>';
     const withCtx = groups.filter((g) => g.context && typeof g.context.percent === 'number');
-    if (!withCtx.length) return h + '<div class="muted">Data appears after the next message.</div></div>';
+    if (!withCtx.length) return '';
     return h + withCtx.map((g) => {
       const p = Math.round(g.context.percent);
       return '<div class="urow"><div class="uh"><b>' + agentIcon(g.agent) + esc(g.title) + '</b><span>' + p + '%</span></div>' +
@@ -492,10 +525,10 @@
     const d = Math.floor(sec / 86400), h = Math.round((sec % 86400) / 3600);
     return plural(d, 'day') + (h ? ' ' + plural(h, 'hour') : '');
   }
-  // The planned share of one limit for the task in progress: what similar tasks used, minus what this task has used so far.
+  // The planned share of one limit for the whole task in progress: what similar tasks used, minus what it has used so far.
   // Returns the width of the striped part (percent) and its text. null when this task has no usage numbers.
   function planInfo(t, key, u) {
-    const start = t.usageStart, est = t.usageEst, x = u && u[key];
+    const start = t.start, est = t.est, x = u && u[key];
     if (!start || typeof start[key] !== 'number' || !x || typeof x.pct !== 'number') return null;
     if (!est || typeof est[key] !== 'number') return { width: 0, text: 'no data yet' };
     const used = Math.max(0, x.pct - start[key]);
@@ -503,23 +536,26 @@
     const n = est.n || 0;
     const what = est.kind === 'average' ? 'average of ' + n + (n === 1 ? ' task' : ' tasks') : n + (n === 1 ? ' similar task' : ' similar tasks');
     const model = est.sameModel === false ? 'other model' : esc(String(est.model || ''));
-    return { width, text: '+~' + Math.round(width) + '% planned (' + what + (model ? ', ' + model : '') + ')' };
+    // The text is the expected share of the limit when the task reaches 100%: where it started, plus the estimate.
+    const at100 = Math.min(100, start[key] + est[key]);
+    return { width, text: 'planned at 100%: ~' + Math.round(at100) + '% (' + what + (model ? ', ' + model : '') + ')' + (start.stale ? ', limits read earlier' : '') };
   }
-  // The task in progress that has usage numbers, the newest one (of this session or any other session).
+  // The whole task that is open and has usage numbers, the newest one (of this session or any other session).
   function plannedOf(state) {
     if (!state) return null;
     let best = null;
-    const lists = [state.todos || []].concat(Object.values(state.sessions || {}).map((x) => (x && x.todos) || []));
-    for (const list of lists) for (const t of list) {
-      if (!t || t.status !== 'in_progress' || !t.usageStart) continue;
-      if (!best || (t.usageStart.at || 0) > (best.usageStart.at || 0)) best = t;
+    const tasks = [state.usageTask].concat(Object.values(state.sessions || {}).map((x) => x && x.usageTask));
+    for (const t of tasks) {
+      if (!t || !t.start) continue;
+      if (!best || (t.start.at || 0) > (best.start.at || 0)) best = t;
     }
     return best;
   }
-  function usageHtml(u, now, task, showPlan) {
-    let h = '<div class="card"><h3>Claude usage limits</h3>';
-    if (!u) return h + '<div class="muted">Loading…</div></div>';
-    if (u.error) return h + '<div class="muted">' + (u.error === 'not-logged-in' ? 'Not signed in to Claude Code (subscription login needed).' : u.error === 'rate-limited' ? 'Anthropic is limiting usage checks for a few minutes. The numbers appear by themselves at the next check.' : 'Usage is not available right now. It is checked again automatically.') + '</div></div>';
+  // A card with nothing to show is left out (no empty cards). The COMPACT button switches the card between its two views.
+  function usageHtml(u, now, task, showPlan, compact) {
+    if (!u) return '';
+    const h = '<div class="card"><div class="cardh"><h3>Claude usage limits</h3><button class="cmp" data-compact aria-pressed="' + (compact ? 'true' : 'false') + '">' + (compact ? 'Full' : 'Compact') + '</button></div>';
+    if (u.error) return h +'<div class="muted">' + (u.error === 'not-logged-in' ? 'Not signed in to Claude Code (subscription login needed).' : u.error === 'rate-limited' ? 'Anthropic is limiting usage checks for a few minutes. The numbers appear by themselves at the next check.' : 'Usage is not available right now. It is checked again automatically.') + '</div></div>';
     const row = (label, key, x) => {
       if (!x) return '';
       const p = Math.round(x.pct);
@@ -527,10 +563,11 @@
       const reset = x.resetsAt ? (x.resetsAt > now ? 'resets in ' + resetDur((x.resetsAt - now) / 1000) : 'resetting…') : '';
       const pl = showPlan && task ? planInfo(task, key, u) : null;
       const meta = [reset, pl ? pl.text : ''].filter(Boolean).join(' · ');
+      if (compact) return '<div class="urow compact"><div class="uh"><b>' + label + '</b><span>' + p + '%' + (reset ? ' <span class="muted">· ' + reset + '</span>' : '') + '</span></div>' + bar(p, cls, pl) + '</div>';
       return '<div class="urow"><div class="uh"><b>' + label + '</b><span>' + p + '%</span></div>' + bar(p, cls, pl) + (meta ? '<div class="meta">' + meta + '</div>' : '') + '</div>';
     };
     const body = row('5-hour limit', 'fiveHour', u.fiveHour) + row('Weekly limit', 'weekly', u.weekly) + row('Weekly Opus', 'opus', u.opus);
-    return h + (body || '<div class="muted">No limits reported for this plan.</div>') + '</div>';
+    return body ? h + body + '</div>' : '';
   }
 
   // Codex and GitHub Copilot, Pro plans only (lib/providers.js). A card is shown only when it has a limit to show,
@@ -568,10 +605,19 @@
   const SETTING_ROWS = [
     ['usageEstimate', 'Planned usage on the limit bars', 'Shows how much of a limit the similar tasks are expected to use.'],
     ['usageRecord', 'Remember usage for each task', 'Records how much of a limit each finished task used, for future estimates.'],
-    ['githubActions', 'GitHub Actions card', 'Shows your GitHub workflow runs and how long they still need.'],
     ['localApi', 'Local API', 'Lets other tools read this dashboard. This computer only.'],
     ['extensionAutoUpdate', 'Update this extension by itself', 'Checks GitHub Releases about once an hour.'],
     ['pluginAutoUpdate', 'Update the Claude plugin by itself', 'Checks about once a day when Claude starts a session.'],
+    ['showScreenshots', 'Show screenshots Claude reads', 'When Claude reads a PNG or JPG file, the picture appears here. Copies stay in .agent-dashboard in this project, never in git.'],
+    ['screenshotsFullscreen', 'Screenshots full screen', 'A click on a screenshot opens it over the whole dashboard. Click or press Esc to close it.'],
+    ['showActivity', 'Activity card', 'The live list of what happened in this project.'],
+    ['showTasks', 'Agent tasks card', 'The to-do list of each Claude session.'],
+    ['showJobs', 'Parallel jobs card', 'Jobs that run at the same time.'],
+    ['showContext', 'Agent memory card', 'What Claude has in its context, and how full it is.'],
+    ['showUsage', 'Claude usage limits card', 'The 5-hour and weekly limits of Claude.'],
+    ['showProviders', 'Codex and Copilot limits card', 'The limits of Codex and GitHub Copilot, for paid plans.'],
+    ['showHistory', 'Run history card', 'The runs that finished earlier.'],
+    ['showOutput', 'Output card', 'The last lines a build or test printed, with the pass and fail counts.'],
   ];
   function settingsHtml() {
     if (!settingsOpen || !settings) return '';
@@ -579,6 +625,9 @@
       SETTING_ROWS.map(([k, t, d]) => '<label class="prow"><input type="checkbox" data-set="' + k + '"' + (settings[k] !== false ? ' checked' : '') +
         '><span><b>' + t + '</b><span class="muted">' + d + '</span></span></label>').join('') + '</div>';
   }
+
+  // A card's switch: the saved value, or the default before the settings arrive.
+  const isOn = (k, dflt) => (settings && typeof settings[k] === 'boolean' ? settings[k] : dflt);
 
   function render() {
     const now = Date.now();
@@ -599,10 +648,14 @@
       h += tabsHtml(list, V.curSession, now);
       if (V.goal && V.goal.text && /[\p{L}\p{N}]/u.test(V.goal.text)) h += '<div class="goal"><span class="gk">🎯 Goal</span><span class="gt">' + esc(V.goal.text) + '</span></div>';
       h += freshHtml(run, now) + tilesHtml(V, run, now) + otherRunsHtml(V, run, now) + pipelineHtml(run, now);
-      h += '<div class="cols"><div class="col">' + activityHtml(V, run, now) + tasksHtml(V, run, now) + '</div>' +
-        '<div class="col">' + jobsHtml(run, now) + ghHtml(gh, now) + outputHtml(run) + '</div>' +
-        '<div class="col">' + usageHtml(usage, now, plannedOf(S), !settings || settings.usageEstimate !== false) + providersHtml(providers, now) + (V.groups ? allContextHtml(V.groups) : contextHtml(V.context)) + historyHtml(runs, run, now, V.groups) + '</div></div>';
+      h += '<div class="cols"><div class="col">' + (isOn('showActivity', true) ? activityHtml(V, run, now) : '') + shotsHtml(S, now) + (isOn('showTasks', true) ? tasksHtml(V, run, now) : '') + '</div>' +
+        '<div class="col">' + (isOn('showJobs', true) ? jobsHtml(run, now) : '') + (isOn('showOutput', false) ? outputHtml(run) : '') + '</div>' +
+        '<div class="col">' + (isOn('showUsage', true) ? usageHtml(usage, now, plannedOf(S), !settings || settings.usageEstimate !== false, usageCompact) : '') + (isOn('showProviders', true) ? providersHtml(providers, now) : '') + (isOn('showContext', true) ? (V.groups ? allContextHtml(V.groups) : contextHtml(V.context)) : '') + (isOn('showHistory', true) ? historyHtml(runs, run, now, V.groups) : '') + '</div></div>';
       h += '<div class="foot">Updated ' + hhmm(S.updatedAt) + '</div>';
+    }
+    if (S && fullShot !== null) {
+      const f = (S.shots || []).find((s) => s && s.src && s.at === fullShot);
+      if (f) h += '<div class="fullshot" title="Click or press Esc to close"><img src="' + esc(f.src) + '" alt="' + esc(f.name || 'screenshot') + '"></div>';
     }
     if (h !== last) { last = h; app.innerHTML = h; }
   }

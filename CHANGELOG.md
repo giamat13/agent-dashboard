@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.4.11
+- Planned usage covers the whole task: the whole TODO list, from its first item in progress until every item is completed. One estimate and one record per task, not per item. Similar tasks are matched on the text of the whole list.
+- Progress ring on a TODO list counts the whole list: finished items, plus the item in progress with the progress of its running script. Without a TODO list it shows the script's steps, as before.
+- The Activity and Agent tasks cards follow their switches in the settings, like the other cards.
+
+## 0.4.10
+- Settings: "Screenshots full screen" (off by default). When on, a click on a screenshot opens it over the whole dashboard; click or press Esc to close it. When off, a click enlarges it inside its card, as before.
+
+## 0.4.9
+- Every card has its own switch in the settings popover (Activity, Agent tasks, Parallel jobs, Agent memory, Claude usage limits, Codex and Copilot limits, Run history, Output). All are on except Output, which is off by default.
+- The GitHub Actions card is removed from the dashboard, and its switch with it. The local API still reports GitHub runs; the `githubActions` key in `~/.agent-dashboard/settings.json` still turns that off.
+
+## 0.4.8
+- The Claude instructions: when one run has several tests or checks, each one is its own sub-step on the dashboard (marked done as it passes).
+
+## 0.4.7
+- Screenshots: click a picture to enlarge it to the full width of the card; click again to shrink it.
+
+## 0.4.6
+- Planned usage on the usage card shows the share expected when the task reaches 100%: where it started plus the estimate (for example "planned at 100%: ~60%"). The striped part on the bar is unchanged.
+
+## 0.4.5
+- Empty cards are left out: a card with nothing to show (no tasks, no activity, no memory data, no usage numbers, no GitHub runs) does not appear.
+- The usage card has a Compact / Full button. Compact shows each limit on one line with its reset time; the choice is remembered in the window.
+- Settings: "Show screenshots Claude reads" (off by default). When Claude reads a PNG or JPG file, a copy goes to `.agent-dashboard/shots` in the project (never in git) and the picture is shown in a Screenshots card. The last 6 are kept.
+- Planned usage keeps working while Anthropic limits the usage checks: a task starts from the last numbers read (up to 20 minutes old, shown as "limits read earlier"). Such a task does not add to the usage history.
+- The Claude instructions say when to mark a task in_progress and completed, which is what records planned usage.
+
 ## 0.4.4
 - Google Antigravity is a supported agent: its sessions show the Antigravity icon, and `dash.js agent-setup antigravity` prints the hook setup for `~/.gemini/config/hooks.json`. The dashboard writes no files for it.
 - No usage limits card for Antigravity: Google publishes no numeric limits, and there is no local file to read them from.
