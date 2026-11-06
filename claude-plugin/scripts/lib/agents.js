@@ -84,14 +84,10 @@ function guideText(scriptsDir, agent) {
   const todoLine = claude
     ? 'TODOs sync automatically from TodoWrite. If you have NO TodoWrite/TaskCreate tool in this session, you MUST still keep the user\'s TODO list yourself, for any task with 2+ steps:'
     : 'Keep the user\'s TODO list yourself, for any task with 2+ steps:';
-  const usageCmd = claude ? `, node "${DASH}" usage (Claude's 5-hour and weekly limits, and the expected usage of the running task)` : '';
-  // Planned usage is recorded at the moment a TODO item turns in_progress, and the real usage at the moment it turns completed.
-  const plannedLine = claude
-    ? 'PLANNED USAGE (on by default, Claude only): the dashboard estimates how much of the 5-hour and weekly limits each task will use, and records what it really used. The planned unit is the WHOLE task (the whole TODO list): it starts with the first item marked in_progress and is recorded when every item is completed. So mark each item in_progress BEFORE you start its work and completed the moment it is done, keep one item in_progress at a time, and do not mark several items done together at the end.\n'
-    : '';
+  const usageCmd = claude ? `, node "${DASH}" usage (Claude's 5-hour and weekly limits)` : '';
   return `Agent Dashboard is ON: the user watches a live progress dashboard inside VS Code (TODOs, context, long-running scripts).
 FULLY AUTONOMOUS: never wait to be told. Update it continuously, add an estimate to a TODO item only if it helps ("item ~5m", optional), and split every step into small sub-steps YOURSELF, each with its own estimate (--subs "a~2m|b~90s"), then sub start/done as you go. If one build, test or script runs several checks (for example several test files), each check is its own sub-step: list them all in --subs (or as @@sub lines) and mark each sub done as it passes. KEEP THE DASHBOARD LIVE ALL THE TIME: mark TODO items done/doing at every step change, update now/eta at every output check, and never go more than 5 tool calls without a dashboard update (TODO, now or eta).
-${plannedLine}PREFERRED for real scripts: wrap the command so the dashboard is live and automatic (heartbeat, last output line, auto % and ETA from the output, exit code):
+PREFERRED for real scripts: wrap the command so the dashboard is live and automatic (heartbeat, last output line, auto % and ETA from the output, exit code):
   node "${WRAP}" --title "<title>" --plain "<plain sentence>" --steps "step1::plain|step2::plain" -- <the real command>
 (run that wrapper command itself in the background). The script may also print lines "@@step 2", "@@sub done", "@@now <text>", "@@eta 5m", "@@job start|done|fail <name>" to drive the dashboard. Stages are always dynamic: name them yourself per project (--steps, or @@step <new name> adds one on the fly). Parallel things: node "${DASH}" job start <name> --eta 3m (ALWAYS give --eta, otherwise the card shows no time left) | job done|fail <name>. Live line: node "${DASH}" log "<text>". User goal (/goal) is shown automatically; set manually with node "${DASH}" goal "<text>".
 Otherwise (manual reporting) for EVERY build, test, install, migration, packaging step or script (do not judge whether it is short or long; only bare ls/pwd/echo/cat/git status|log|diff and file reads are exempt) report progress with:

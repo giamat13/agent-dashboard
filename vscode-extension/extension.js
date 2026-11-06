@@ -6,6 +6,7 @@ const settingsLib = require('./lib/settings');
 const apiLib = require('./lib/api');
 const ghLib = require('./lib/gh');
 const providersLib = require('./lib/providers');
+const plannedLib = require('./lib/planned');
 const http = require('./lib/http');
 const updater = require('./lib/updater');
 const os = require('os');
@@ -110,6 +111,15 @@ function refreshUsage() {
   req.end();
 }
 
+// Planned usage (lib/planned.js): the TODO lists of the sessions say when a task starts and ends; the usage read at those times gives its share.
+// The file is read on every update, because another VS Code window on the same folder may write it too.
+function plannedFor(state, folder) {
+  if (!folder) return null;
+  const store = plannedLib.read(folder);
+  if (plannedLib.track(store, state && state.sessions, usage, Date.now())) plannedLib.write(folder, store);
+  return plannedLib.view(store, usage);
+}
+
 // Codex and GitHub Copilot limits, Pro plans only (lib/providers.js). Codex is read every minute, Copilot every five.
 let providers = null, providersBusy = false, providersAt = 0;
 const PROVIDERS_EVERY_MS = 60 * 1000;
@@ -179,16 +189,17 @@ function broadcast(force) {
   refreshUsage();
   refreshProviders();
   const { state, key, folder } = readState();
+  const planned = plannedFor(state, folder);
   updateStatusBar(state);
   const settings = settingsLib.read();   // the file can change from the Claude side too (dash.js settings set ...)
   syncApi(settings.localApi !== false);
   refreshGithub(folder, settings);
   const gh = ghView(state, settings);
-  const ukey = key + '|' + (usage ? usage.fetchedAt || usage.error : '') + '|' + JSON.stringify(settings) + '|' + (ghRaw ? ghRaw.at : '') + '|' + (providers ? providers.at : '');
+  const ukey = key + '|' + (usage ? usage.fetchedAt || usage.error : '') + '|' + JSON.stringify(settings) + '|' + (ghRaw ? ghRaw.at : '') + '|' + (providers ? providers.at : '') + '|' + JSON.stringify(planned);
   if (!force && ukey === lastKey) return;
   lastKey = ukey;
   for (const w of [...views, panel && panel.webview].filter(Boolean)) {
-    w.postMessage({ type: 'state', state: withShotUris(w, state, folder), cfg: cfg(), usage, providers, settings, gh });
+    w.postMessage({ type: 'state', state: withShotUris(w, state, folder), cfg: cfg(), usage, planned, providers, settings, gh });
   }
 }
 

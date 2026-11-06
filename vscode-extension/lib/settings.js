@@ -6,8 +6,6 @@ const os = require('os');
 const path = require('path');
 
 const DEFAULTS = {
-  usageEstimate: true,        // planned share on the usage limit bars
-  usageRecord: true,          // remember how much usage each finished task used
   githubActions: true,        // GitHub Actions card
   localApi: true,             // read-only local API for other tools (127.0.0.1)
   extensionAutoUpdate: true,  // the VS Code extension updates itself from GitHub Releases

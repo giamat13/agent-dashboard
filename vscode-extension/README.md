@@ -27,7 +27,6 @@ MIT © GIAMAT13
 - **Empty cards are left out**, so only cards with something to show appear.
 - **Compact usage card**: the Compact / Full button on the usage card shows each limit on one line.
 - **Screenshots Claude read**: switch on "Show screenshots Claude reads" in the settings (gear). When Claude reads a PNG or JPG, the picture appears in the dashboard. Copies stay in `.agent-dashboard` in the project, never in git.
-- **Planned usage** works while Anthropic limits the usage checks: it starts from the last numbers read (shown as "limits read earlier").
 
 ## New in 0.4.4
 

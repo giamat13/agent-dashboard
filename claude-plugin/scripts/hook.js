@@ -4,14 +4,12 @@
 const fs = require('fs');
 const path = require('path');
 const S = require('./lib/state');
-const USAGE = require('./lib/usage');
 const Settings = require('./lib/settings');
 const PluginUpdate = require('./lib/plugin-update');
 const Agents = require('./lib/agents');
 
 // "--agent codex|copilot --event <Event>": the other coding agents. Without it the hook serves Claude Code, as before.
 const { agent: AGENT, event: EVENT_ARG } = Agents.parseArgs(process.argv);
-const OFF_USAGE = { usageEstimate: false, usageRecord: false };   // the Claude plan limits belong to Claude sessions only
 
 const DASH = path.join(__dirname, 'dash.js').replace(/\\/g, '/');
 const STALE_ETA_MS = 2 * 60 * 1000;
@@ -105,15 +103,13 @@ function readContext(transcript, cwd) {
 
 // Remember when each task started/finished (matched by text without the "~5m" estimate).
 const todoKey = (t) => String(t.content || '').replace(/\s*~\s*\d+(?:\.\d+)?\s*(?:s|m|h)\w*\s*$/i, '').trim();
-function stampTodos(st, todos, prev, now, cfg) {
+function stampTodos(st, todos, prev, now) {
   const old = new Map((prev || []).map((t) => [todoKey(t), t]));
   (todos || []).forEach((t) => {
     const o = old.get(todoKey(t)) || {};
     if (t.status === 'in_progress') t.startedAt = o.startedAt && o.status === 'in_progress' ? o.startedAt : now;
     else if (t.status === 'completed') { t.startedAt = o.startedAt; t.endedAt = o.endedAt && o.status === 'completed' ? o.endedAt : now; }
   });
-  // Plan usage covers the whole list (the task), not one item: see lib/usage.js trackTask.
-  USAGE.trackTask(st, todos, now, cfg);
 }
 
 function syncTodos(st, inp) {
@@ -249,7 +245,6 @@ function main(inp) {
   if (!ss.agent) ss.agent = AGENT;
   const prevTodos = (ss.todos || []).map((t) => Object.assign({}, t));
   st.todos = ss.todos || []; st.goal = ss.goal || null; st.context = ss.context || null; st.todoSync = ss.todoSync;
-  st.usageTask = ss.usageTask || null;   // the planned task of this session (lib/usage.js)
   st.shots = ss.shots || [];             // the pictures this session read (captureShot), never the other sessions'
   const ctx = readContext(inp.transcript_path, inp.cwd);
   if (ctx) st.context = ctx;
@@ -274,7 +269,7 @@ function main(inp) {
     }
   } else if (event === 'UserPromptSubmit' && typeof inp.prompt === 'string' && !inp.prompt.trim().startsWith('/') &&
              !(st.todos || []).some((t) => t.status !== 'completed')) {
-    out = `Agent Dashboard is ON and the user is watching it. If this task has 2+ steps, FIRST create the TODO list (${AGENT === 'claude' ? 'TodoWrite/TaskCreate; if you have neither: ' : ''}node "${DASH}" todo set "[~] current|next|another"), keep it updated as you go (mark a step in_progress BEFORE you start its work, and completed the moment it is done; one in_progress at a time; the planned usage covers the WHOLE list, from its first in_progress item until every item is completed), and wrap EVERY build/test/install/script command with wrap.js (or report it with dash.js run/step/now); several tests in one run = one sub-step per test (--subs); do not judge by duration. Dashboard texts in simple English.`;
+    out = `Agent Dashboard is ON and the user is watching it. If this task has 2+ steps, FIRST create the TODO list (${AGENT === 'claude' ? 'TodoWrite/TaskCreate; if you have neither: ' : ''}node "${DASH}" todo set "[~] current|next|another"), keep it updated as you go (mark a step in_progress BEFORE you start its work, and completed the moment it is done; one in_progress at a time), and wrap EVERY build/test/install/script command with wrap.js (or report it with dash.js run/step/now); several tests in one run = one sub-step per test (--subs); do not judge by duration. Dashboard texts in simple English.`;
   } else if (event === 'PostToolUse' && /^(TodoWrite|TaskCreate|TaskUpdate)$/.test(inp.tool_name || '')) {
     syncTodos(st, inp);
   } else if (event === 'PreToolUse' || event === 'PostToolUse') {
@@ -316,8 +311,8 @@ function main(inp) {
   }
 
   if (!ss.title && event === 'UserPromptSubmit' && typeof inp.prompt === 'string' && !inp.prompt.trim().startsWith('/')) ss.title = inp.prompt.trim().replace(/\s+/g, ' ').slice(0, 40);
-  stampTodos(st, st.todos, prevTodos, now, AGENT === 'claude' ? Settings.read() : OFF_USAGE);
-  Object.assign(ss, { todos: st.todos, goal: st.goal, context: st.context, todoSync: st.todoSync, usageTask: st.usageTask, shots: st.shots, lastSeen: now, cwd: inp.cwd, transcript: inp.transcript_path || ss.transcript });
+  stampTodos(st, st.todos, prevTodos, now);
+  Object.assign(ss, { todos: st.todos, goal: st.goal, context: st.context, todoSync: st.todoSync, shots: st.shots, lastSeen: now, cwd: inp.cwd, transcript: inp.transcript_path || ss.transcript });
   for (const k of Object.keys(st.sessions)) {
     const x = st.sessions[k];
     if (k === sid) continue;

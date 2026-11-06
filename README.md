@@ -30,7 +30,7 @@ code --install-extension agent-dashboard-<גרסה>.vsix --force
 
 - התוסף של VS Code בודק עדכונים ב-GitHub Releases כ-20 שניות אחרי הפתיחה ואז כל שעה, בודק את ה-checksum ומתקין. אחרי עדכון: Reload Window. בדיקה ידנית: `Agent Dashboard: Check for updates`.
 - תוסף Claude מתעדכן פעם ביום ברקע. השיחה הבאה אחרי עדכון מודיעה על כך; צריך להפעיל מחדש את Claude Code.
-- מתגים (כרטיס ההגדרות, גלגל השיניים, או `~/.agent-dashboard/settings.json`): `extensionAutoUpdate`, `pluginAutoUpdate`, `githubActions`, `localApi`, `usageEstimate`, `usageRecord`.
+- מתגים (כרטיס ההגדרות, גלגל השיניים, או `~/.agent-dashboard/settings.json`): `extensionAutoUpdate`, `pluginAutoUpdate`, `githubActions`, `localApi`.
 
 ## מה רואים
 

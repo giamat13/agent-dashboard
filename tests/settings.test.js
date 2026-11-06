@@ -13,8 +13,8 @@ const ext = require('../vscode-extension/lib/settings');
 const fileOf = () => path.join(tmp, '.agent-dashboard', 'settings.json');
 
 try {
-  // Defaults: fifteen switches; the screenshots and Output switches are off, the others on, and the two copies of the list agree.
-  assert.strictEqual(Object.keys(plugin.DEFAULTS).length, 16);
+  // Defaults: fourteen switches; the screenshots and Output switches are off, the others on, and the two copies of the list agree.
+  assert.strictEqual(Object.keys(plugin.DEFAULTS).length, 14);
   assert.strictEqual(plugin.DEFAULTS.showScreenshots, false);
   assert.strictEqual(plugin.DEFAULTS.screenshotsFullscreen, true);
   assert.strictEqual(plugin.DEFAULTS.showOutput, false);
@@ -27,10 +27,10 @@ try {
   // update() changes only the keys it gets.
   plugin.update({ localApi: false });
   assert.strictEqual(plugin.read().localApi, false);
-  assert.strictEqual(plugin.read().usageEstimate, true);
-  plugin.update({ usageRecord: false });
+  assert.strictEqual(plugin.read().githubActions, true);
+  plugin.update({ extensionAutoUpdate: false });
   assert.strictEqual(plugin.read().localApi, false);
-  assert.strictEqual(plugin.read().usageRecord, false);
+  assert.strictEqual(plugin.read().extensionAutoUpdate, false);
   assert.ok(fs.existsSync(fileOf()), 'the file is written to ~/.agent-dashboard/settings.json');
   console.log('ok - update changes only the keys given');
 
@@ -41,13 +41,13 @@ try {
   console.log('ok - the extension and the plugin share one file');
 
   // Unknown keys and values that are not true/false are ignored.
-  fs.writeFileSync(fileOf(), JSON.stringify({ localApi: 'no', bogus: true, usageEstimate: false, pluginAutoUpdate: 0 }));
+  fs.writeFileSync(fileOf(), JSON.stringify({ localApi: 'no', bogus: true, githubActions: false, pluginAutoUpdate: 0 }));
   const got = plugin.read();
   assert.strictEqual(got.localApi, true, 'a text value falls back to the default');
-  assert.strictEqual(got.usageEstimate, false);
+  assert.strictEqual(got.githubActions, false);
   assert.strictEqual(got.pluginAutoUpdate, true);
   assert.ok(!('bogus' in got));
-  assert.strictEqual(Object.keys(got).length, 16);
+  assert.strictEqual(Object.keys(got).length, 14);
   console.log('ok - unknown keys and bad values are ignored');
 
   // A broken file gives the defaults, not an error.
@@ -57,8 +57,8 @@ try {
   console.log('ok - a broken file gives the defaults');
 
   // write() keeps only known keys and fills in the rest.
-  const w = plugin.write({ usageRecord: false, nope: 1 });
-  assert.strictEqual(w.usageRecord, false);
+  const w = plugin.write({ githubActions: false, nope: 1 });
+  assert.strictEqual(w.githubActions, false);
   assert.strictEqual(w.localApi, true);
   assert.ok(!('nope' in w));
   console.log('ok - write keeps known keys and fills in defaults');

@@ -70,9 +70,6 @@ button:hover { border-color: var(--run); }
 .bar.ok i { background: var(--ok); } .bar.bad i { background: var(--bad); }
 .bar.indet i { background: linear-gradient(90deg, transparent, var(--run), transparent); background-size: 50% 100%; background-repeat: no-repeat; animation: slide 1.4s linear infinite; }
 @keyframes slide { from { background-position: -50% 0; } to { background-position: 150% 0; } }
-/* planned share of a limit for the task in progress: striped, right after the used part */
-.bar { position: relative; }
-.bar i.u { position: absolute; top: 0; border-radius: 0; opacity: .6; background: repeating-linear-gradient(135deg, var(--run) 0 4px, transparent 4px 8px); transition: left .8s ease, width .8s ease; }
 /* GitHub Actions card: recent runs as small rows; the GitHub Pages line is smaller still */
 .gh .ghlabel { margin: 10px 0 2px; font-size: 12px; }
 .gh .ghrow { display: flex; gap: 8px; align-items: baseline; font-size: 13px; padding: 5px 0; border-top: 1px solid var(--line); }
@@ -233,6 +230,9 @@ pre.tail { max-height: 64px; }
 .cmp { font-size: 11px; padding: 1px 9px; border-radius: 99px; color: var(--dim); }
 .cmp[aria-pressed="true"] { color: var(--txt); border-color: var(--accent); }
 .urow.compact { margin: 5px 0; } .urow.compact .uh { margin-bottom: 2px; font-size: 12.5px; }
+/* The planned share of the running task: a dashed line across the limit bar (the bar itself clips its fill, so the line sits outside it). */
+.barwrap { position: relative; }
+.plan { position: absolute; top: -4px; bottom: -4px; width: 0; border-left: 2px dashed var(--txt); opacity: .85; }
 .shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .shots figure { margin: 0; cursor: zoom-in; }
 .shots figure.big { grid-column: 1 / -1; cursor: zoom-out; }

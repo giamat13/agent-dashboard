@@ -195,7 +195,6 @@ const list = [a, b]; // newest first, as sessionList() returns them
   app.handlers.click({ target: { closest: (s) => (s === '[data-gear]' ? {} : null) } });
   assert.ok(app.innerHTML.includes('class="pop"'), 'gear opens the popover');
   assert.ok(!/data-set="localApi"[^>]*checked/.test(app.innerHTML), 'localApi shows off');
-  assert.ok(/data-set="usageEstimate"[^>]*checked/.test(app.innerHTML), 'usageEstimate shows on');
   app.handlers.click({ target: { closest: () => null } });
   assert.ok(!app.innerHTML.includes('class="pop"'), 'a click outside closes it');
   app.handlers.click({ target: { closest: (s) => (s === '[data-gear]' ? {} : null) } });

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.21
+- The planned usage is back on the usage card: the 5-hour and weekly limit bars show a dashed line at the share the running task is expected to reach when it ends. A task is the whole TODO list of a session: it starts when an item is in progress and is recorded when every item is completed. The estimate is the median of the last 10 finished tasks, kept in `.agent-dashboard/planned.json`. No line shows until a task has finished once.
+
+## 0.4.20
+- The planned usage is removed: the limit bars no longer show a planned share, and the usageEstimate and usageRecord switches are gone. The 5-hour and weekly limits still show, and `dash.js usage` still prints them.
+
 ## 0.4.19
 - The COMPACT CHAT button is removed, with its request file and the plugin module that only served it. Sessions no longer poll for compact requests.
 

@@ -51,7 +51,7 @@ Every `job start <name>` gets `--eta 3m` (your best guess). Without it the "Runn
 ## GitHub Actions and usage
 
 - A GitHub Actions run gets the usual time of its workflow. If a workflow usually takes a different time, set it: `DASH ci-eta "<workflow name>" 6m`. Remove it with `DASH ci-eta clear "<workflow name>"`. Use the name as GitHub shows it.
-- `DASH usage` prints the Claude limits (5-hour and weekly) and the expected usage of the running task.
+- `DASH usage` prints the Claude limits (5-hour and weekly).
 
 ## Estimates must add up
 

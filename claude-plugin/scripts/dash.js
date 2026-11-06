@@ -259,8 +259,6 @@ switch (cmd) {
     };
     if (sub === 'set') {
       st.todos = String(arg || die('Missing items: "a|b|c"')).split('|').filter((x) => x.trim()).map(mk);
-      // Same bookkeeping as the hook: the whole list is one planned task (lib/usage.js trackTask).
-      USAGE.trackTask(st, st.todos, now, Settings.read());
     } else if (sub === 'add') {
       st.todos.push(mk(String(arg || die('Missing text')), st.todos.length));
     } else if (['doing', 'done', 'pending'].includes(sub)) {
@@ -268,9 +266,7 @@ switch (cmd) {
       if (!t) die('No such TODO: ' + arg);
       t.status = sub === 'doing' ? 'in_progress' : sub === 'done' ? 'completed' : 'pending';
       if (t.status === 'in_progress') t.startedAt = now; else if (t.status === 'completed') { t.endedAt = now; if (!t.startedAt) t.startedAt = now; }
-      // Plan usage covers the whole list (lib/usage.js trackTask), the same as the hook.
-      USAGE.trackTask(st, st.todos, now, Settings.read());
-    } else if (sub === 'clear') { st.todos = []; delete st.usageTask; }
+    } else if (sub === 'clear') { st.todos = []; }
     else die('Usage: todo set "a|[~] b|[x] c" | todo doing|done|pending <n> | todo clear');
     console.log('TODOs: ' + st.todos.map((t) => `${t.id}.[${t.status}] ${t.content}`).join(' ; '));
     break;
@@ -293,27 +289,17 @@ switch (cmd) {
     process.exit(0);
   }
   case 'usage': {
-    // usage [--json]: the plan limits right now, and what the task in progress is expected to use.
-    const cfg = Settings.read();
+    // usage [--json]: the plan limits right now.
     const snap = USAGE.current(st, now);
-    const task = st.usageTask || null;   // the whole task (its TODO list) while it is open
     const pick = (x) => (x ? { pct: Math.round(x.pct), resetsAt: x.resetsAt || null } : null);
     const info = {
       weekly: snap ? pick(snap.weekly) : null,
       fiveHour: snap ? pick(snap.fiveHour) : null,
       error: snap ? null : (st.usageSnap && st.usageSnap.error) || 'not read yet',
-      task: task ? task.text : null,
-      expected: cfg.usageEstimate && task && task.est ? task.est : null,
     };
     if (flags.json) console.log(JSON.stringify(info, null, 1));
     else {
       console.log('Weekly limit: ' + (info.weekly ? info.weekly.pct + '%' : '?') + ' · 5-hour limit: ' + (info.fiveHour ? info.fiveHour.pct + '%' : '?') + (info.error ? ' (' + info.error + ')' : ''));
-      if (info.task) {
-        const e = info.expected;
-        console.log('Task in progress: ' + info.task + (e
-          ? ' · expected about +' + e.weekly + '% weekly and +' + e.fiveHour + '% 5-hour (' + (e.kind === 'similar' ? e.n + ' similar task' + (e.n === 1 ? '' : 's') : 'average of ' + e.n + ' task' + (e.n === 1 ? '' : 's')) + ', ' + (e.model || 'any model') + ')'
-          : (cfg.usageEstimate ? ' · no estimate yet' : ' · estimates are off')));
-      }
     }
     break;
   }
@@ -365,5 +351,5 @@ if (live && ['run', 'step', 'sub', 'eta', 'job', 'now'].includes(cmd)) {
 }
 
 // Keep this session's own slice in sync, otherwise the next hook would overwrite todos/goal set here.
-if (st.session && st.sessions && st.sessions[st.session]) Object.assign(st.sessions[st.session], { todos: st.todos, goal: st.goal, usageTask: st.usageTask || null });
+if (st.session && st.sessions && st.sessions[st.session]) Object.assign(st.sessions[st.session], { todos: st.todos, goal: st.goal });
 S.save(root, st);

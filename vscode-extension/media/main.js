@@ -1,7 +1,7 @@
 (function () {
   const vscode = acquireVsCodeApi();
   const app = document.getElementById('app');
-  let S = null, cfg = { staleMinutes: 3 }, last = '', usage = null, hist = {}, gh = null, providers = null;
+  let S = null, cfg = { staleMinutes: 3 }, last = '', usage = null, planned = null, hist = {}, gh = null, providers = null;
   let settings = null;             // the on/off settings from the extension (null until the first update)
   let settingsOpen = false;        // the gear popover
   let usageCompact = false;        // the usage card in its compact view (remembered for this viewer)
@@ -12,7 +12,7 @@
   const shown = {};                // smoothed percentages (key -> value), so numbers glide instead of jumping
 
   window.addEventListener('message', (e) => {
-    if (e.data.type === 'state') { S = e.data.state; cfg = e.data.cfg || cfg; usage = e.data.usage || null; providers = e.data.providers || null; settings = e.data.settings || settings; gh = e.data.gh || null; render(); }
+    if (e.data.type === 'state') { S = e.data.state; cfg = e.data.cfg || cfg; usage = e.data.usage || null; planned = e.data.planned || null; providers = e.data.providers || null; settings = e.data.settings || settings; gh = e.data.gh || null; render(); }
   });
   vscode.postMessage({ type: 'ready' });
   setInterval(() => S && render(), 1000);
@@ -134,11 +134,15 @@
     return '<div class="ring"><svg viewBox="0 0 80 80"><circle class="bg" cx="40" cy="40" r="' + R + '"/><circle class="fg" cx="40" cy="40" r="' + R +
       '" style="stroke:' + color + '" stroke-dasharray="' + C.toFixed(1) + '" stroke-dashoffset="' + (C * (1 - pct / 100)).toFixed(1) + '"/></svg><b>' + pct + '%</b></div>';
   }
-  // plan (optional): { width } = the planned share, drawn as a striped part right after the used part of the bar.
-  const bar = (pct, cls, plan) => {
+  const bar = (pct, cls) => {
     const p = Math.max(0, Math.min(100, pct));
-    const seg = plan && plan.width > 0 ? '<i class="u" style="left:' + p + '%;width:' + Math.min(100 - p, plan.width) + '%"></i>' : '';
-    return '<div class="bar ' + (cls || '') + '"><i style="width:' + p + '%"></i>' + seg + '</div>';
+    return '<div class="bar ' + (cls || '') + '"><i style="width:' + p + '%"></i></div>';
+  };
+  // A limit bar with the planned share of the running task as a dashed line (plan = { expect } or null).
+  const usageBar = (pct, cls, plan) => {
+    if (!plan) return bar(pct, cls);
+    const at = Math.max(0, Math.min(100, plan.expect));
+    return '<div class="barwrap">' + bar(pct, cls) + '<span class="plan" style="left:' + at + '%" title="Planned when this task ends: about ' + Math.round(plan.expect) + '%"></span></div>';
   };
 
   const stepFrac = (s, now) => {
@@ -526,35 +530,8 @@
     const d = Math.floor(sec / 86400), h = Math.round((sec % 86400) / 3600);
     return plural(d, 'day') + (h ? ' ' + plural(h, 'hour') : '');
   }
-  // The planned share of one limit for the whole task in progress: what similar tasks used, minus what it has used so far.
-  // Returns the width of the striped part (percent) and its text. null when this task has no usage numbers.
-  function planInfo(t, key, u) {
-    const start = t.start, est = t.est, x = u && u[key];
-    if (!start || typeof start[key] !== 'number' || !x || typeof x.pct !== 'number') return null;
-    if (!est || typeof est[key] !== 'number') return { width: 0, text: 'no data yet' };
-    const n = est.n || 0;
-    const what = est.kind === 'average' ? 'average of ' + n + (n === 1 ? ' task' : ' tasks') : n + (n === 1 ? ' similar task' : ' similar tasks');
-    const model = est.sameModel === false ? 'other model' : esc(String(est.model || ''));
-    // The text is the expected share of the limit when the task reaches 100%: where it started, plus the estimate.
-    // The striped part runs from the current share up to that same point, so the bar and the text always agree
-    // (also when the limit reset during the task and the current share is below where it started).
-    const at100 = Math.min(100, start[key] + est[key]);
-    const width = Math.max(0, at100 - x.pct);
-    return { width, text:'planned at 100%: ~' + Math.round(at100) + '% (' + what + (model ? ', ' + model : '') + ')' + (start.stale ? ', limits read earlier' : '') };
-  }
-  // The whole task that is open and has usage numbers, the newest one (of this session or any other session).
-  function plannedOf(state) {
-    if (!state) return null;
-    let best = null;
-    const tasks = [state.usageTask].concat(Object.values(state.sessions || {}).map((x) => x && x.usageTask));
-    for (const t of tasks) {
-      if (!t || !t.start) continue;
-      if (!best || (t.start.at || 0) > (best.start.at || 0)) best = t;
-    }
-    return best;
-  }
-  // A card with nothing to show is left out (no empty cards). The COMPACT button switches the card between its two views.
-  function usageHtml(u, now, task, showPlan, compact) {
+  // A card with nothing to show is left out (no empty cards). The Compact / Full button switches the card between its two views.
+  function usageHtml(u, now, compact, planned) {
     if (!u) return '';
     const h = '<div class="card"><div class="cardh"><h3>Claude usage limits</h3><button class="cmp" data-compact aria-pressed="' + (compact ? 'true' : 'false') + '">' + (compact ? 'Full' : 'Compact') + '</button></div>';
     if (u.error) return h +'<div class="muted">' + (u.error === 'not-logged-in' ? 'Not signed in to Claude Code (subscription login needed).' : u.error === 'rate-limited' ? 'Anthropic is limiting usage checks for a few minutes. The numbers appear by themselves at the next check.' : 'Usage is not available right now. It is checked again automatically.') + '</div></div>';
@@ -563,10 +540,11 @@
       const p = Math.round(x.pct);
       const cls = p >= 90 ? 'bad' : p >= 70 ? 'warn' : 'ok';
       const reset = x.resetsAt ? (x.resetsAt > now ? 'resets in ' + resetDur((x.resetsAt - now) / 1000) : 'resetting…') : '';
-      const pl = showPlan && task ? planInfo(task, key, u) : null;
-      const meta = [reset, pl ? pl.text : ''].filter(Boolean).join(' · ');
-      if (compact) return '<div class="urow compact"><div class="uh"><b>' + label + '</b><span>' + p + '%' + (reset ? ' <span class="muted">· ' + reset + '</span>' : '') + '</span></div>' + bar(p, cls, pl) + '</div>';
-      return '<div class="urow"><div class="uh"><b>' + label + '</b><span>' + p + '%</span></div>' + bar(p, cls, pl) + (meta ? '<div class="meta">' + meta + '</div>' : '') + '</div>';
+      const pl = planned && planned[key] ? planned[key] : null;   // the running task's planned share (dashed line)
+      if (compact) return '<div class="urow compact"><div class="uh"><b>' + label + '</b><span>' + p + '%' + (reset ? ' <span class="muted">· ' + reset + '</span>' : '') + '</span></div>' + usageBar(p, cls, pl) + '</div>';
+      const plan = pl ? 'planned ~' + Math.round(pl.expect) + '% when this task ends' : '';
+      const meta = [reset, plan].filter(Boolean).join(' · ');
+      return '<div class="urow"><div class="uh"><b>' + label + '</b><span>' + p + '%</span></div>' + usageBar(p, cls, pl) + (meta ? '<div class="meta">' + meta + '</div>' : '') + '</div>';
     };
     const body = row('5-hour limit', 'fiveHour', u.fiveHour) + row('Weekly limit', 'weekly', u.weekly) + row('Weekly Opus', 'opus', u.opus);
     return body ? h + body + '</div>' : '';
@@ -578,7 +556,7 @@
     const p = Math.round(x.pct);
     const cls = p >= 90 ? 'bad' : p >= 70 ? 'warn' : 'ok';
     const reset = x.resetsAt ? (x.resetsAt > now ? 'resets in ' + resetDur((x.resetsAt - now) / 1000) : 'resetting…') : '';
-    return '<div class="urow"><div class="uh"><b>' + label + '</b><span>' + p + '%</span></div>' + bar(p, cls, null) + (reset ? '<div class="meta">' + reset + '</div>' : '') + '</div>';
+    return '<div class="urow"><div class="uh"><b>' + label + '</b><span>' + p + '%</span></div>' + bar(p, cls) + (reset ? '<div class="meta">' + reset + '</div>' : '') + '</div>';
   }
   function providersHtml(p, now) {
     if (!p) return '';
@@ -605,8 +583,6 @@
 
   // Settings popover (opened by the gear in the header). Each switch is saved for this computer.
   const SETTING_ROWS = [
-    ['usageEstimate', 'Planned usage on the limit bars', 'Shows how much of a limit the similar tasks are expected to use.'],
-    ['usageRecord', 'Remember usage for each task', 'Records how much of a limit each finished task used, for future estimates.'],
     ['localApi', 'Local API', 'Lets other tools read this dashboard. This computer only.'],
     ['extensionAutoUpdate', 'Update this extension by itself', 'Checks GitHub Releases about once an hour.'],
     ['pluginAutoUpdate', 'Update the Claude plugin by itself', 'Checks about once a day when Claude starts a session.'],
@@ -652,7 +628,7 @@
       h += freshHtml(run, now) + tilesHtml(V, run, now) + otherRunsHtml(V, run, now) + pipelineHtml(run, now);
       h += '<div class="cols"><div class="col">' + (isOn('showActivity', true) ? activityHtml(V, run, now) : '') + shotsHtml(V, now) + (isOn('showTasks', true) ? tasksHtml(V, run, now) : '') + '</div>' +
         '<div class="col">' + (isOn('showJobs', true) ? jobsHtml(run, now) : '') + (isOn('showOutput', false) ? outputHtml(run) : '') + '</div>' +
-        '<div class="col">' + (isOn('showUsage', true) ? usageHtml(usage, now, plannedOf(S), !settings || settings.usageEstimate !== false, usageCompact) : '') + (isOn('showProviders', true) ? providersHtml(providers, now) : '') + (isOn('showContext', true) ? (V.groups ? allContextHtml(V.groups) : contextHtml(V.context, V.curSession)) : '') + (isOn('showHistory', true) ? historyHtml(runs, run, now, V.groups) : '') + '</div></div>';
+        '<div class="col">' + (isOn('showUsage', true) ? usageHtml(usage, now, usageCompact, planned) : '') + (isOn('showProviders', true) ? providersHtml(providers, now) : '') + (isOn('showContext', true) ? (V.groups ? allContextHtml(V.groups) : contextHtml(V.context, V.curSession)) : '') + (isOn('showHistory', true) ? historyHtml(runs, run, now, V.groups) : '') + '</div></div>';
       h += '<div class="foot">Updated ' + hhmm(S.updatedAt) + '</div>';
     }
     if (S && fullShot !== null) {
