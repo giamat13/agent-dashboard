@@ -20,7 +20,9 @@ const hhmm = () => '12:00:00';
 
 // view() and tabsHtml() as the dashboard has them, with the current selection (sel) passed in.
 function web(sel) {
-  const body = [allConst[0].trim(), grab('view'), grab('tabsHtml'), 'return { view: view, tabsHtml: tabsHtml };'].join('\n');
+  const agentInfo = /^  const AGENT_INFO = \{[\s\S]*?\n  \};$/m.exec(src);
+  assert.ok(agentInfo, 'AGENT_INFO not found in media/main.js');
+  const body = [allConst[0].trim(), agentInfo[0], grab('agentIcon'), grab('view'), grab('tabsHtml'), 'return { view: view, tabsHtml: tabsHtml };'].join('\n');
   return new Function('sel', 'esc', 'hhmm', body)(sel, esc, hhmm);
 }
 
@@ -124,27 +126,49 @@ const list = [a, b]; // newest first, as sessionList() returns them
   {
     const html = page('__all', full);
     assert.ok(html.includes('data-sid="__all" class="stab on"'), 'All sessions tab is on');
-    assert.ok(html.includes("Claude's tasks (all sessions)"), 'tasks heading for all sessions');
+    assert.ok(html.includes("Agent tasks (all sessions)"), 'tasks heading for all sessions');
     assert.ok(html.includes('class="grph"') && html.includes('Refactor') && html.includes('Docs'), 'tasks grouped by session');
     assert.ok(html.includes('Clean up'), "a session's goal is shown under its name");
     assert.ok(html.includes('class="others"') && html.includes('Build'), 'other running run is listed');
-    assert.ok(html.includes("Claude's memory in each chat"), 'memory card per chat');
+    assert.ok(html.includes("Agent memory in each chat"), 'memory card per chat');
     assert.ok(html.includes('<details id="hist" open>'), 'run history is open');
     console.log('ok - render: all sessions shows groups, other runs, memory per chat, open history');
   }
   {
     const html = page('sa', full);
     assert.ok(!html.includes('(all sessions)'), 'one session has no grouped heading');
-    assert.ok(html.includes("Claude's tasks</h3>"), 'one session heading');
+    assert.ok(html.includes("Agent tasks</h3>"), 'one session heading');
     assert.ok(!html.includes('class="others"'), 'one session lists no other runs');
     assert.ok(html.includes('<details id="hist" open>'), 'run history is open in one session too');
     console.log('ok - render: one session shows only its own tasks and history');
   }
   {
     const html = page(null, { session: 'sa', updatedAt: T0, activity: [], history: {}, todos: [], runs: [], sessions: {} });
-    assert.ok(html.includes('Claude Dashboard'), 'empty state renders');
+    assert.ok(html.includes('Agent Dashboard'), 'empty state renders');
     console.log('ok - render: empty state');
   }
+}
+
+// Session icons: each session tab shows its agent; a session saved before the agent was stored shows Claude.
+{
+  const c = { id: 'sc', title: 'Port', agent: 'codex', lastSeen: NOW - 2000, todos: [] };
+  const p = { id: 'sp', title: 'Copy', agent: 'copilot', lastSeen: NOW - 3000, todos: [] };
+  const tabs = web('sc').tabsHtml([a, c, p], 'sc', NOW);
+  assert.ok(tabs.includes('aria-label="Codex"'), 'Codex icon on its tab');
+  assert.ok(tabs.includes('aria-label="GitHub Copilot"'), 'Copilot icon on its tab');
+  assert.ok(tabs.includes('aria-label="Claude"'), 'Claude icon for a session without an agent');
+  console.log('ok - tabs: each session shows its agent icon');
+}
+
+// Usage card: the raw HTTP error never shows; a rate limit or another failure gets a short text.
+{
+  const usage = new Function('esc', 'num', 'bar', [grab('usageHtml'), 'return usageHtml;'].join('\n'))(esc, String, () => '');
+  const busy = usage({ error: 'rate-limited' }, NOW);
+  assert.ok(busy.includes('limiting usage checks'), 'rate limit: short text');
+  assert.ok(!/http|429|Could not read/.test(busy), 'no raw HTTP error');
+  assert.ok(usage({ error: 'unavailable' }, NOW).includes('not available right now'), 'other failure: short text');
+  assert.ok(usage({ error: 'not-logged-in' }, NOW).includes('Not signed in'), 'no login: same text as before');
+  console.log('ok - usage card: a rate limit or failure shows a short text, never the HTTP error');
 }
 
 // Settings popover: the gear opens it, a click outside closes it, a switch shows the saved value and is sent to the extension.

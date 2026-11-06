@@ -1,14 +1,14 @@
 (function () {
   const vscode = acquireVsCodeApi();
   const app = document.getElementById('app');
-  let S = null, cfg = { staleMinutes: 3 }, last = '', usage = null, hist = {}, gh = null;
+  let S = null, cfg = { staleMinutes: 3 }, last = '', usage = null, hist = {}, gh = null, providers = null;
   let settings = null;             // the on/off settings from the extension (null until the first update)
   let settingsOpen = false;        // the gear popover
   const open = new Set();          // ids of <details> the user opened
   const shown = {};                // smoothed percentages (key -> value), so numbers glide instead of jumping
 
   window.addEventListener('message', (e) => {
-    if (e.data.type === 'state') { S = e.data.state; cfg = e.data.cfg || cfg; usage = e.data.usage || null; settings = e.data.settings || settings; gh = e.data.gh || null; render(); }
+    if (e.data.type === 'state') { S = e.data.state; cfg = e.data.cfg || cfg; usage = e.data.usage || null; providers = e.data.providers || null; settings = e.data.settings || settings; gh = e.data.gh || null; render(); }
   });
   vscode.postMessage({ type: 'ready' });
   setInterval(() => S && render(), 1000);
@@ -41,14 +41,30 @@
   function view(S, list) {
     if (!list.length) return S;
     if (sel === ALL && list.length > 1) {
-      const groups = list.map((x, i) => ({ id: x.id, title: x.title || ('Session ' + (list.length - i)), goal: x.goal || null, context: x.context || null, todos: x.todos || [] }));
+      const groups = list.map((x, i) => ({ id: x.id, agent: x.agent || 'claude', title: x.title || ('Session ' + (list.length - i)), goal: x.goal || null, context: x.context || null, todos: x.todos || [] }));
       return Object.assign({}, S, { todos: [].concat(...groups.map((g) => g.todos)), goal: null, context: null, curSession: ALL, groups, runs: S.runs || [] });
     }
     const cur = list.find((x) => x.id === sel) || list.find((x) => x.id === S.session) || list[0];
     return Object.assign({}, S, {
-      todos: cur.todos || [], goal: cur.goal || null, context: cur.context || null, curSession: cur.id, groups: null,
+      todos: cur.todos || [], goal: cur.goal || null, context: cur.context || null, curSession: cur.id, curAgent: cur.agent || 'claude', groups: null,
       runs: (S.runs || []).filter((r) => !r.session || r.session === cur.id),
     });
+  }
+  // Icon of the agent that runs a session: Claude, Codex or GitHub Copilot (Claude when unknown).
+  const AGENT_INFO = {
+    claude: { name: 'Claude', color: '#d97757' },
+    codex: { name: 'Codex', color: '#10a37f' },
+    copilot: { name: 'GitHub Copilot', color: '#8957e5' },
+  };
+  function agentIcon(agent) {
+    const a = AGENT_INFO[agent] ? agent : 'claude';
+    const info = AGENT_INFO[a];
+    const shape = a === 'codex'
+      ? '<path d="M5 7l5 5-5 5M12 17h7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>'
+      : a === 'copilot'
+        ? '<path d="M5.5 9.5c0-2.3 2.6-3.5 6.5-3.5s6.5 1.2 6.5 3.5v3c0 3.4-2.9 6-6.5 6s-6.5-2.6-6.5-6z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="9.2" cy="12.4" r="1.4" fill="currentColor"/><circle cx="14.8" cy="12.4" r="1.4" fill="currentColor"/>'
+        : '<path d="M12 3.5v17M4.6 7.7l14.8 8.6M4.6 16.3l14.8-8.6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/>';
+    return '<svg viewBox="0 0 24 24" width="14" height="14" role="img" aria-label="' + info.name + '" style="color:' + info.color + ';vertical-align:-2px;margin-right:5px;flex:none"><title>' + info.name + '</title>' + shape + '</svg>';
   }
   function tabsHtml(list, curId, now) {
     if (list.length < 2) return '';
@@ -58,7 +74,7 @@
     return '<div class="stabs">' + all + list.map((x, i) => {
       const busy = (x.todos || []).some((t) => t.status === 'in_progress');
       return '<button data-sid="' + esc(x.id) + '" class="stab' + (x.id === curId ? ' on' : '') + '" title="' + esc(x.title || x.id) + '">' + (busy ? '<i></i>' : '') +
-        esc(x.title || ('Session ' + (list.length - i))) + ' <span class="muted">' + (now - (x.lastSeen || 0) < 60000 ? 'now' : hhmm(x.lastSeen)) + '</span></button>';
+        agentIcon(x.agent) + esc(x.title || ('Session ' + (list.length - i))) + ' <span class="muted">' + (now - (x.lastSeen || 0) < 60000 ? 'now' : hhmm(x.lastSeen)) + '</span></button>';
     }).join('') + '</div>';
   }
   app.addEventListener('toggle', (e) => {
@@ -319,7 +335,7 @@
   function tasksHtml(V, run, now) {
     const todos = V.todos || [];
     const groups = V.groups;
-    let h = '<div class="card"><h3>' + (groups ? 'Claude\'s tasks (all sessions)' : 'Claude\'s tasks') + '</h3>';
+    let h = '<div class="card"><h3>' + (groups ? 'Agent tasks (all sessions)' : agentIcon(V.curAgent) + 'Agent tasks') + '</h3>';
     if (!todos.length) return h + '<div class="muted">No tasks yet. When Claude plans multi-step work, the list appears here.</div></div>';
     const done = todos.filter((t) => t.status === 'completed');
     h += '<div class="tasksum"><b>' + done.length + ' of ' + todos.length + '</b> <span class="muted">completed</span></div>' + bar(Math.round((done.length / todos.length) * 100), 'ok');
@@ -327,7 +343,7 @@
     groups.forEach((g, i) => {
       if (!g.todos.length) return;
       const gDone = g.todos.filter((t) => t.status === 'completed').length;
-      h += '<div class="grp"><div class="grph">' + esc(g.title) + ' <span class="muted">' + gDone + ' of ' + g.todos.length + '</span></div>' +
+      h += '<div class="grp"><div class="grph">' + agentIcon(g.agent) + esc(g.title) + ' <span class="muted">' + gDone + ' of ' + g.todos.length + '</span></div>' +
         (g.goal && g.goal.text ? '<div class="muted grpg">🎯 ' + esc(g.goal.text) + '</div>' : '') + taskRows(g.todos, now, 'g' + i) + '</div>';
     });
     return h + '</div>';
@@ -433,7 +449,7 @@
   }
 
   function contextHtml(c) {
-    let h = '<div class="card"><h3>Claude\'s memory in this chat</h3>';
+    let h = '<div class="card"><h3>Agent memory in this chat</h3>';
     if (!c) return h + '<div class="muted">Data appears after the next message.</div></div>';
     const color = c.percent >= 85 ? 'var(--bad)' : c.percent >= 60 ? 'var(--warn)' : 'var(--ok)';
     const hint = c.percent >= 95 ? 'Claude is about to compact the chat automatically (it summarizes and small details are forgotten).' : c.percent >= 85 ? 'Close to auto-compact. Consider summarizing or starting a new chat.' : c.percent >= 60 ? 'Filling up. Soon it is worth summarizing.' : 'Plenty of room.';
@@ -443,12 +459,12 @@
 
   // "All sessions": each chat's memory, one bar per chat.
   function allContextHtml(groups) {
-    const h = '<div class="card"><h3>Claude\'s memory in each chat</h3>';
+    const h = '<div class="card"><h3>Agent memory in each chat</h3>';
     const withCtx = groups.filter((g) => g.context && typeof g.context.percent === 'number');
     if (!withCtx.length) return h + '<div class="muted">Data appears after the next message.</div></div>';
     return h + withCtx.map((g) => {
       const p = Math.round(g.context.percent);
-      return '<div class="urow"><div class="uh"><b>' + esc(g.title) + '</b><span>' + p + '%</span></div>' +
+      return '<div class="urow"><div class="uh"><b>' + agentIcon(g.agent) + esc(g.title) + '</b><span>' + p + '%</span></div>' +
         bar(p, p >= 85 ? 'bad' : p >= 60 ? 'warn' : 'ok') + '<div class="muted">' + num(g.context.used || 0) + ' of ' + num(g.context.max || 0) + ' tokens until compact</div></div>';
     }).join('') + '</div>';
   }
@@ -500,7 +516,7 @@
   function usageHtml(u, now, task, showPlan) {
     let h = '<div class="card"><h3>Claude usage limits</h3>';
     if (!u) return h + '<div class="muted">Loading…</div></div>';
-    if (u.error) return h + '<div class="muted">' + (u.error === 'not-logged-in' ? 'Not signed in to Claude Code (subscription login needed).' : 'Could not read usage (' + esc(u.error) + ').') + '</div></div>';
+    if (u.error) return h + '<div class="muted">' + (u.error === 'not-logged-in' ? 'Not signed in to Claude Code (subscription login needed).' : u.error === 'rate-limited' ? 'Anthropic is limiting usage checks for a few minutes. The numbers appear by themselves at the next check.' : 'Usage is not available right now. It is checked again automatically.') + '</div></div>';
     const row = (label, key, x) => {
       if (!x) return '';
       const p = Math.round(x.pct);
@@ -512,6 +528,28 @@
     };
     const body = row('5-hour limit', 'fiveHour', u.fiveHour) + row('Weekly limit', 'weekly', u.weekly) + row('Weekly Opus', 'opus', u.opus);
     return h + (body || '<div class="muted">No limits reported for this plan.</div>') + '</div>';
+  }
+
+  // Codex and GitHub Copilot, Pro plans only (lib/providers.js). A card is shown only when it has a limit to show,
+  // so a free plan shows nothing here.
+  function providerRow(label, x, now) {
+    const p = Math.round(x.pct);
+    const cls = p >= 90 ? 'bad' : p >= 70 ? 'warn' : 'ok';
+    const reset = x.resetsAt ? (x.resetsAt > now ? 'resets in ' + resetDur((x.resetsAt - now) / 1000) : 'resetting…') : '';
+    return '<div class="urow"><div class="uh"><b>' + label + '</b><span>' + p + '%</span></div>' + bar(p, cls, null) + (reset ? '<div class="meta">' + reset + '</div>' : '') + '</div>';
+  }
+  function providersHtml(p, now) {
+    if (!p) return '';
+    let h = '';
+    const cx = p.codex;
+    if (cx && (cx.fiveHour || cx.weekly)) {
+      h += '<div class="card"><h3>Codex usage limits</h3>' +
+        (cx.fiveHour ? providerRow('5-hour limit', cx.fiveHour, now) : '') +
+        (cx.weekly ? providerRow('Weekly limit', cx.weekly, now) : '') + '</div>';
+    }
+    const cp = p.copilot;
+    if (cp && cp.premium) h += '<div class="card"><h3>GitHub Copilot usage limits</h3>' + providerRow('Premium requests', cp.premium, now) + '</div>';
+    return h;
   }
 
   function historyHtml(runs, lastRun, now, groups) {
@@ -548,7 +586,7 @@
     const active = [...runs].reverse().find((r) => r.status === 'running');
     const live = !!active || (S && now - S.updatedAt < 6000);
     let h = '<div class="top"><div class="logo"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5" opacity=".4"/><path d="M12 3.5a8.5 8.5 0 0 1 8.5 8.5 8.5 8.5 0 0 1-3.2 6.6"/><path d="M8.6 12.4l2.4 2.5 4.4-5.3"/></svg></div>' +
-      '<div class="ttl"><h1>Claude Dashboard</h1><div class="muted">Live progress of Claude\'s work and your scripts</div></div>' +
+      '<div class="ttl"><h1>Agent Dashboard</h1><div class="muted">Live progress of your agents\' work and your scripts</div></div>' +
       '<span class="pill ' + (live ? 'live' : '') + '"><i></i>' + (active ? 'Running' : live ? 'Active' : 'Idle') + '</span>' +
       '<button class="gear" data-gear title="Settings" aria-label="Settings" aria-expanded="' + (settingsOpen ? 'true' : 'false') + '">⚙</button>' + settingsHtml() + '</div>';
     if (!S) {
@@ -560,7 +598,7 @@
       h += freshHtml(run, now) + tilesHtml(V, run, now) + otherRunsHtml(V, run, now) + pipelineHtml(run, now);
       h += '<div class="cols"><div class="col">' + activityHtml(V, run, now) + tasksHtml(V, run, now) + '</div>' +
         '<div class="col">' + jobsHtml(run, now) + ghHtml(gh, now) + outputHtml(run) + '</div>' +
-        '<div class="col">' + usageHtml(usage, now, plannedOf(S), !settings || settings.usageEstimate !== false) + (V.groups ? allContextHtml(V.groups) : contextHtml(V.context)) + historyHtml(runs, run, now, V.groups) + '</div></div>';
+        '<div class="col">' + usageHtml(usage, now, plannedOf(S), !settings || settings.usageEstimate !== false) + providersHtml(providers, now) + (V.groups ? allContextHtml(V.groups) : contextHtml(V.context)) + historyHtml(runs, run, now, V.groups) + '</div></div>';
       h += '<div class="foot">Updated ' + hhmm(S.updatedAt) + '</div>';
     }
     if (h !== last) { last = h; app.innerHTML = h; }

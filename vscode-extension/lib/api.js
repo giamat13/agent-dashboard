@@ -28,6 +28,7 @@ const ROUTES = {
   '/api/health': (c) => [200, { ok: true, name: NAME, version: c.version, pid: process.pid, startedAt: c.startedAt, routes: Object.keys(ROUTES) }],
   '/api/state': (c) => { const s = c.getState(); return s ? [200, s] : [404, { error: 'no-state', message: 'No dashboard state in this folder yet.' }]; },
   '/api/usage': (c) => { const u = c.getUsage(); return u ? [200, u] : [404, { error: 'no-usage-yet', message: 'The plan limits have not been read yet.' }]; },
+  '/api/providers': (c) => { const p = c.getProviders(); return p ? [200, p] : [404, { error: 'no-providers-yet', message: 'The Codex and Copilot limits have not been read yet.' }]; },
   '/api/github': (c) => { const g = c.getGithub(); return g ? [200, g] : [404, { error: 'no-github-yet', message: 'The GitHub Actions card has no data yet.' }]; },
 };
 
@@ -76,6 +77,7 @@ function start(opts) {
     startedAt: new Date().toISOString(),
     getState: opts.getState || (() => null),
     getUsage: opts.getUsage || (() => null),
+    getProviders: opts.getProviders || (() => null),
     getGithub: opts.getGithub || (() => null),
     port: () => server.address().port,
   };

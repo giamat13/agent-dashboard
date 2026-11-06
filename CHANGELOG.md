@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.3
+- The sidebar icon of the extension is removed. Open the dashboard from the status bar item ("Agents") or with "Agent Dashboard: Open in large window".
+
+## 0.4.2
+- The names say Agent instead of Claude: the panel is "Agent Dashboard", and the headings are "Agent tasks" and "Agent memory".
+- Each session shows an icon for the agent that runs it: Claude, Codex or GitHub Copilot. Sessions saved before this show the Claude icon.
+- Usage card: when Anthropic limits the checks, a short text is shown instead of the raw HTTP error. The last numbers stay if they were read before.
+
+## 0.4.1
+- Codex and GitHub Copilot limits in the panel, for paid plans only. A limit that exists only on the free plan is not shown, so on a free plan there is no card. Codex: the 5-hour and weekly limits from its local session files. Copilot: the premium-request allowance, read through the GitHub CLI (`gh`) about every five minutes.
+- Progress for Codex and Copilot: `dash.js agent-setup codex` and `dash.js agent-setup copilot` print the hook settings and the instructions to add. The dashboard writes no files for them.
+- The hook takes `--agent` and `--event` for the other agents. Claude Code works as before.
+
 ## 0.4.0
 - The VS Code extension updates itself: about 20 seconds after it starts, and then every hour, it checks GitHub Releases, verifies the file's checksum and installs a newer version. Reload the window to use it. "Agent Dashboard: Check for updates" checks now.
 - The Claude plugin updates itself once a day in the background. The first session after an update says so; restart Claude Code to use it.

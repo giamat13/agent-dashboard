@@ -2,7 +2,7 @@
   "name": "agent-dashboard",
   "displayName": "Agent Dashboard",
   "description": "Live dashboard for Claude: to-dos, context, and long-running scripts with steps and estimated time.",
-  "version": "0.4.0",
+  "version": "0.4.3",
   "publisher": "giamat13",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -12,12 +12,6 @@
   "main": "./extension.js",
   "activationEvents": ["onStartupFinished"],
   "contributes": {
-    "viewsContainers": {
-      "activitybar": [{ "id": "agentDashboard", "title": "Claude Dashboard", "icon": "media/icon.svg" }]
-    },
-    "views": {
-      "agentDashboard": [{ "type": "webview", "id": "agentDashboard.view", "name": "Progress" }]
-    },
     "commands": [
       { "command": "agentDashboard.open", "title": "Agent Dashboard: Open in large window" },
       { "command": "agentDashboard.clear", "title": "Agent Dashboard: Clear history" },

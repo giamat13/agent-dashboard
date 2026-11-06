@@ -7,6 +7,11 @@ const S = require('./lib/state');
 const USAGE = require('./lib/usage');
 const Settings = require('./lib/settings');
 const PluginUpdate = require('./lib/plugin-update');
+const Agents = require('./lib/agents');
+
+// "--agent codex|copilot --event <Event>": the other coding agents. Without it the hook serves Claude Code, as before.
+const { agent: AGENT, event: EVENT_ARG } = Agents.parseArgs(process.argv);
+const OFF_USAGE = { usageEstimate: false, usageRecord: false };   // the Claude plan limits belong to Claude sessions only
 
 const DASH = path.join(__dirname, 'dash.js').replace(/\\/g, '/');
 const STALE_ETA_MS = 2 * 60 * 1000;
@@ -17,13 +22,13 @@ let raw = '';
 process.stdin.on('data', (d) => (raw += d)).on('end', () => {
   let inp = {};
   try { inp = JSON.parse(raw); } catch { /* ignore */ }
-  try { main(inp); } catch { /* hooks must never break Claude */ }
+  try { main(Agents.normalize(AGENT, inp, EVENT_ARG)); } catch { /* hooks must never break the agent */ }
   process.exit(0);
 });
 
 function emit(event, text) {
-  if (!text) return;
-  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: text } }));
+  const s = Agents.output(AGENT, event, text);
+  if (s) process.stdout.write(s);
 }
 
 // The "autoCompactWindow" setting (absolute tokens) wins: per-model first, then global.
@@ -201,22 +206,8 @@ function parseGoal(txt) {
   return { text: text.slice(0, 500), at: Date.now() };
 }
 
-const GUIDE =`Agent Dashboard is ON: the user watches a live progress dashboard inside VS Code (TODOs, context, long-running scripts).
-FULLY AUTONOMOUS: never wait to be told. Update it continuously, add an estimate to a TODO item only if it helps ("item ~5m", optional), and split every step into small sub-steps YOURSELF, each with its own estimate (--subs "a~2m|b~90s"), then sub start/done as you go. KEEP THE DASHBOARD LIVE ALL THE TIME: mark TODO items done/doing at every step change, update now/eta at every output check, and never go more than 5 tool calls without a dashboard update (TODO, now or eta).
-PREFERRED for real scripts: wrap the command so the dashboard is live and automatic (heartbeat, last output line, auto % and ETA from the output, exit code):
-  node "${DASH.replace('dash.js', 'wrap.js')}" --title "<title>" --plain "<plain sentence>" --steps "step1::plain|step2::plain" -- <the real command>
-(run that wrapper command itself in the background). The script may also print lines "@@step 2", "@@sub done", "@@now <text>", "@@eta 5m", "@@job start|done|fail <name>" to drive the dashboard. Stages are always dynamic: name them yourself per project (--steps, or @@step <new name> adds one on the fly). Parallel things: node "${DASH}" job start <name> --eta 3m (ALWAYS give --eta, otherwise the card shows no time left) | job done|fail <name>. Live line: node "${DASH}" log "<text>". User goal (/goal) is shown automatically; set manually with node "${DASH}" goal "<text>".
-Otherwise (manual reporting) for EVERY build, test, install, migration, packaging step or script (do not judge whether it is short or long; only bare ls/pwd/echo/cat/git status|log|diff and file reads are exempt) report progress with:
-  node "${DASH}" run start "<title>" --plain "<one plain sentence a non-technical person understands>" --steps "step1::plain explanation|step2::plain explanation" --eta 20m
-  node "${DASH}" step start <n|name> --plain "<what is happening, simple words>" --eta 4m --subs "sub1~2m|sub2~90s|sub3~30s"   # every sub-step gets its own estimate after ~
-  node "${DASH}" sub done [n|all]      # finish a sub-step
-  node "${DASH}" now "<what is happening right now, simple words, with counts like '33 of 36 done' or '45%': the progress bar follows them>"
-  node "${DASH}" eta 6m                # ESTIMATE FROM NOW for the current step. Update it EVERY time you check on the script.
-  node "${DASH}" eta 6m --total        # TOTAL TIME LEFT for the WHOLE run, from now. Keep it true: give it at run start (run start --eta), and update it whenever the plan changes (a step starts or ends, an estimate changes, steps or sub-steps are added or dropped). If the dashboard or dash.js says it is out of date, fix it at once. If you forget, the dashboard works it out from the steps and says so, but you must still update it.
-  node "${DASH}" step done | step fail "<reason>" ; node "${DASH}" run done|fail --summary "<result in plain words>"
-Other commands: node "${DASH}" ci-eta "<workflow name>" 6m (the expected time of a GitHub Actions workflow; "ci-eta clear <name>" removes it), node "${DASH}" usage (Claude's 5-hour and weekly limits, and the expected usage of the running task).
-Run the long command in the background, then check its output every 1-2 minutes and update the dashboard (step/sub/now/eta) each time.
-Write all dashboard texts in English, in simple words, no jargon (the user may not be technical). TODOs sync automatically from TodoWrite. If you have NO TodoWrite/TaskCreate tool in this session, you MUST still keep the user's TODO list yourself, for any task with 2+ steps: at the start run node "${DASH}" todo set "[~] current item|next item|another item" ; as you progress run node "${DASH}" todo done <n> / todo doing <n> / todo add "new item" (items marked [x]=done, [~]=in progress). Run these in the background like any command.`;
+// The instructions for this agent (Claude, Codex or Copilot). Built in lib/agents.js.
+const GUIDE = Agents.guideText(__dirname, AGENT);
 
 function main(inp) {
   const event = inp.hook_event_name;
@@ -233,7 +224,8 @@ function main(inp) {
     S.save(root, st);
     return;
   }
-  const ss = st.sessions[sid] || (st.sessions[sid] = { id: sid, firstSeen: now, todos: [], context: null, goal: null });
+  const ss = st.sessions[sid] || (st.sessions[sid] = { id: sid, agent: AGENT, firstSeen: now, todos: [], context: null, goal: null });
+  if (!ss.agent) ss.agent = AGENT;
   const prevTodos = (ss.todos || []).map((t) => Object.assign({}, t));
   st.todos = ss.todos || []; st.goal = ss.goal || null; st.context = ss.context || null; st.todoSync = ss.todoSync;
   const ctx = readContext(inp.transcript_path, inp.cwd);
@@ -251,13 +243,15 @@ function main(inp) {
 
   if (event === 'SessionStart') {
     out = GUIDE;
-    try {
-      const notice = PluginUpdate.sessionStart();   // at most one background plugin update a day; the notice is shown once
-      if (notice) out += '\n\n' + notice;
-    } catch { /* the update check never breaks the session */ }
+    if (AGENT === 'claude') {   // the Claude plugin's own update check: only for Claude sessions
+      try {
+        const notice = PluginUpdate.sessionStart();   // at most one background plugin update a day; the notice is shown once
+        if (notice) out += '\n\n' + notice;
+      } catch { /* the update check never breaks the session */ }
+    }
   } else if (event === 'UserPromptSubmit' && typeof inp.prompt === 'string' && !inp.prompt.trim().startsWith('/') &&
              !(st.todos || []).some((t) => t.status !== 'completed')) {
-    out = `Agent Dashboard is ON and the user is watching it. If this task has 2+ steps, FIRST create the TODO list (TodoWrite/TaskCreate; if you have neither: node "${DASH}" todo set "[~] current|next|another"), keep it updated as you go (in_progress when starting a step, completed right after), and wrap EVERY build/test/install/script command with wrap.js (or report it with dash.js run/step/now); do not judge by duration. Dashboard texts in simple English.`;
+    out = `Agent Dashboard is ON and the user is watching it. If this task has 2+ steps, FIRST create the TODO list (${AGENT === 'claude' ? 'TodoWrite/TaskCreate; if you have neither: ' : ''}node "${DASH}" todo set "[~] current|next|another"), keep it updated as you go (in_progress when starting a step, completed right after), and wrap EVERY build/test/install/script command with wrap.js (or report it with dash.js run/step/now); do not judge by duration. Dashboard texts in simple English.`;
   } else if (event === 'PostToolUse' && /^(TodoWrite|TaskCreate|TaskUpdate)$/.test(inp.tool_name || '')) {
     syncTodos(st, inp);
   } else if (event === 'PreToolUse' || event === 'PostToolUse') {
@@ -297,7 +291,7 @@ function main(inp) {
   }
 
   if (!ss.title && event === 'UserPromptSubmit' && typeof inp.prompt === 'string' && !inp.prompt.trim().startsWith('/')) ss.title = inp.prompt.trim().replace(/\s+/g, ' ').slice(0, 40);
-  stampTodos(st, st.todos, prevTodos, now, Settings.read());
+  stampTodos(st, st.todos, prevTodos, now, AGENT === 'claude' ? Settings.read() : OFF_USAGE);
   Object.assign(ss, { todos: st.todos, goal: st.goal, context: st.context, todoSync: st.todoSync, lastSeen: now, cwd: inp.cwd, transcript: inp.transcript_path || ss.transcript });
   for (const k of Object.keys(st.sessions)) {
     const x = st.sessions[k];

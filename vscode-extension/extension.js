@@ -5,6 +5,7 @@ const path = require('path');
 const settingsLib = require('./lib/settings');
 const apiLib = require('./lib/api');
 const ghLib = require('./lib/gh');
+const providersLib = require('./lib/providers');
 const http = require('./lib/http');
 const updater = require('./lib/updater');
 const os = require('os');
@@ -54,8 +55,8 @@ function fmt(sec) {
 function updateStatusBar(state) {
   const run = state && [...state.runs].reverse().find((r) => r.status === 'running');
   if (!run) {
-    status.text = '$(graph) Claude';
-    status.tooltip = 'Claude Dashboard: no active run';
+    status.text = '$(graph) Agents';
+    status.tooltip = 'Agent Dashboard: no active run';
     return;
   }
   const done = run.steps.filter((s) => s.status === 'done').length;
@@ -98,15 +99,30 @@ function refreshUsage() {
         usage = { fiveHour: pick(j.five_hour), weekly: pick(j.seven_day), opus: pick(j.seven_day_opus), fetchedAt: Date.now() };
       } catch (e) {
         if (res.statusCode === 429) usageFailUntil = Date.now() + 10 * 60 * 1000;
-        if (!usage || usage.error) usage = { error: String(e.message || e) };
+        if (!usage || usage.error) usage = { error: res.statusCode === 429 ? 'rate-limited' : 'unavailable' };
       }
       broadcast(true);
     });
   });
-  const fail = (m) => { usageBusy = false; usageAt = Date.now(); if (!usage || usage.error) usage = { error: m }; broadcast(true); };
+  const fail = () => { usageBusy = false; usageAt = Date.now(); if (!usage || usage.error) usage = { error: 'unavailable' }; broadcast(true); };
   req.on('timeout', () => { req.destroy(); });
-  req.on('error', (e) => fail(String(e.message || e)));
+  req.on('error', () => fail());
   req.end();
+}
+
+// Codex and GitHub Copilot limits, Pro plans only (lib/providers.js). Codex is read every minute, Copilot every five.
+let providers = null, providersBusy = false, providersAt = 0;
+const PROVIDERS_EVERY_MS = 60 * 1000;
+
+function refreshProviders() {
+  const now = Date.now();
+  if (providersBusy || now - providersAt < PROVIDERS_EVERY_MS) return;
+  providersBusy = true;
+  providersAt = now;
+  providersLib.readAll({ now, previous: providers }).then(
+    (p) => { providers = p; },
+    () => { /* the limits are optional: the panel keeps what it had */ }
+  ).then(() => { providersBusy = false; broadcast(true); });
 }
 
 // The local API (lib/api.js) runs while the "localApi" switch is on and a folder is open. It follows the switch and the folders.
@@ -119,7 +135,7 @@ function syncApi(want) {
   api = null;
   Promise.resolve(old && old.close()).then(() => {
     if (!dirs.length || apiKey !== key) return null;
-    return apiLib.start({ version: VERSION, infoDirs: dirs, getState: () => readState().state, getUsage: () => usage, getGithub: () => ghView(readState().state, settingsLib.read()) });
+    return apiLib.start({ version: VERSION, infoDirs: dirs, getState: () => readState().state, getUsage: () => usage, getProviders: () => providers, getGithub: () => ghView(readState().state, settingsLib.read()) });
   }).then((a) => {
     if (!a) return;
     if (apiKey === key) api = a; else a.close();
@@ -161,17 +177,18 @@ function refreshGithub(folder, settings) {
 
 function broadcast(force) {
   refreshUsage();
+  refreshProviders();
   const { state, key, folder } = readState();
   updateStatusBar(state);
   const settings = settingsLib.read();   // the file can change from the Claude side too (dash.js settings set ...)
   syncApi(settings.localApi !== false);
   refreshGithub(folder, settings);
   const gh = ghView(state, settings);
-  const ukey = key + '|' + (usage ? usage.fetchedAt || usage.error : '') + '|' + JSON.stringify(settings) + '|' + (ghRaw ? ghRaw.at : '');
+  const ukey = key + '|' + (usage ? usage.fetchedAt || usage.error : '') + '|' + JSON.stringify(settings) + '|' + (ghRaw ? ghRaw.at : '') + '|' + (providers ? providers.at : '');
   if (!force && ukey === lastKey) return;
   lastKey = ukey;
   for (const w of [...views, panel && panel.webview].filter(Boolean)) {
-    w.postMessage({ type: 'state', state, cfg: cfg(), usage, settings, gh });
+    w.postMessage({ type: 'state', state, cfg: cfg(), usage, providers, settings, gh });
   }
 }
 
@@ -219,7 +236,7 @@ async function restoreTitle() {
 
 function openPanel() {
   if (panel) return panel.reveal();
-  panel = vscode.window.createWebviewPanel('agentDashboard.panel', 'Claude Dashboard', vscode.ViewColumn.Beside, {
+  panel = vscode.window.createWebviewPanel('agentDashboard.panel', 'Agent Dashboard', vscode.ViewColumn.Beside, {
     enableScripts: true,
     retainContextWhenHidden: true,
   });
@@ -323,13 +340,6 @@ function activate(context) {
 
   context.subscriptions.push(
     status,
-    vscode.window.registerWebviewViewProvider('agentDashboard.view', {
-      resolveWebviewView(view) {
-        views.add(view.webview);
-        wire(view.webview);
-        view.onDidDispose(() => views.delete(view.webview));
-      },
-    }),
     vscode.commands.registerCommand('agentDashboard.open', openPanel),
     vscode.commands.registerCommand('agentDashboard.clear', clearHistory),
     vscode.workspace.onDidChangeConfiguration((e) => e.affectsConfiguration('agentDashboard') && broadcast(true)),

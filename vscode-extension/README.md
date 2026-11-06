@@ -13,7 +13,7 @@ This extension only displays data. The companion Claude Code plugin (`agent-dash
 ## Usage
 
 1. Install this extension and the Claude plugin.
-2. Click the **Claude Dashboard** icon in the activity bar (or the status bar item).
+2. Click the **Agents** item in the status bar, or run **Agent Dashboard: Open in large window**.
 3. Ask Claude to run your tests. Long commands are wrapped automatically.
 
 Commands: `Agent Dashboard: Open in large window`, `Agent Dashboard: Clear history`, `Agent Dashboard: Check for updates`.
@@ -21,6 +21,11 @@ Commands: `Agent Dashboard: Open in large window`, `Agent Dashboard: Clear histo
 Setting: `agentDashboard.staleMinutes` (default 3) — minutes of silence before a "possibly stuck" warning.
 
 MIT © GIAMAT13
+
+## New in 0.4.1
+
+- **Codex and GitHub Copilot limits**: shown only for paid plans. A limit that exists only on the free plan is not shown, so a free plan shows no card. Codex: 5-hour and weekly limits from its local session files. Copilot: the premium-request allowance, read through the `gh` CLI.
+- **Codex and Copilot progress**: run `dash.js agent-setup codex` or `dash.js agent-setup copilot` (in the plugin's `scripts` folder). It prints the hook settings and instructions to add. Nothing is written for you.
 
 ## New in 0.4.0
 

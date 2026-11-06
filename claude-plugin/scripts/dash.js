@@ -6,6 +6,7 @@ const path = require('path');
 const S = require('./lib/state');
 const Settings = require('./lib/settings');
 const USAGE = require('./lib/usage');
+const Agents = require('./lib/agents');
 
 const argv = process.argv.slice(2);
 const flags = {};
@@ -358,8 +359,15 @@ switch (cmd) {
     console.log(apiLine());
     process.exit(0);
   }
+  case 'agent-setup': {
+    // agent-setup codex|copilot: the hook registration and the instructions for another coding agent. Writes no files.
+    const name = String(sub || '').toLowerCase();
+    if (!['codex', 'copilot'].includes(name)) die('Usage: dash.js agent-setup codex|copilot');
+    console.log(Agents.setupText(name, __dirname));
+    break;
+  }
   default:
-    die('Usage: dash.js run start|done|fail | step start|done|fail | sub add|start|done | eta <time> [--total] | now "..." | log "..." | job add|start|done|fail|live | todo set|add|doing|done | status | reset | clear | settings [get|set] | usage [--json] | ci-eta "<job>" <time>');
+    die('Usage: dash.js run start|done|fail | step start|done|fail | sub add|start|done | eta <time> [--total] | now "..." | log "..." | job add|start|done|fail|live | todo set|add|doing|done | status | reset | clear | settings [get|set] | usage [--json] | ci-eta "<job>" <time> | agent-setup codex|copilot');
 }
 
 // The run's total time left must cover the steps still to do. When it does not, the dashboard works it out from the steps
