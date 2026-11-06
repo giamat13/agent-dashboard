@@ -20,6 +20,14 @@ const DEFAULTS = {
   showProviders: true,        // the Codex and Copilot limits card
   showHistory: true,          // the Run history card
   showOutput: false,          // the Output card (the last lines a build or test printed); off by default
+  // Things that cost Claude usage (each adds text to Claude's context, or makes Claude spend tool calls on the dashboard):
+  claudeGuide: true,          // short dashboard instructions at the start of each Claude session
+  detailedUpdates: false,     // the long instructions: Claude reports every step, sub-step and time left by hand (many extra calls)
+  taskReminder: false,        // a reminder about the TODO list with every new task
+  todoReminders: false,       // a reminder when the TODO list was not updated for a while
+  runReminders: false,        // reminders before long commands and when a run's time left is out of date
+  claudeUsageEstimate: true,  // Claude estimates each task's planned usage (one short command, plus a short list of past tasks)
+  usageInsights: true,        // a local log of what costs usage (~/.agent-dashboard/usage-insights.jsonl, never sent anywhere); costs nothing
 };
 const KEYS = Object.keys(DEFAULTS);
 

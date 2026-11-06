@@ -7,6 +7,7 @@ const S = require('./lib/state');
 const Settings = require('./lib/settings');
 const PluginUpdate = require('./lib/plugin-update');
 const Agents = require('./lib/agents');
+const Insights = require('./lib/insights');
 
 // "--agent codex|copilot --event <Event>": the other coding agents. Without it the hook serves Claude Code, as before.
 const { agent: AGENT, event: EVENT_ARG } = Agents.parseArgs(process.argv);
@@ -197,7 +198,12 @@ function parseGoal(txt) {
 }
 
 // The instructions for this agent (Claude, Codex or Copilot). Built in lib/agents.js.
-const GUIDE = Agents.guideText(__dirname, AGENT);
+// Short by default; the long one only with the "detailedUpdates" switch; none with "claudeGuide" off.
+function guideFor(cfg) {
+  if (!cfg.claudeGuide) return '';
+  if (cfg.detailedUpdates) return Agents.guideText(__dirname, AGENT);
+  return Agents.leanGuideText(__dirname, AGENT, { estimate: AGENT === 'claude' && cfg.claudeUsageEstimate });
+}
 
 // Screenshots: when Claude reads a picture (PNG, JPG, ...), a copy goes to <project>/.agent-dashboard/shots so the dashboard
 // can show it. Only with the "showScreenshots" switch on. The folder is ignored by git (.agent-dashboard/.gitignore).
@@ -259,28 +265,40 @@ function main(inp) {
     if (g !== undefined) { st.goal = g; if (g) S.logActivity(st, 'Goal set: ' + g.text.slice(0, 120), now); }
   }
 
+  const cfg = Settings.read();
+  let what = '';   // the kind of text added to Claude's context, for the usage log
   if (event === 'SessionStart') {
-    out = GUIDE;
+    out = guideFor(cfg); what = 'guide';
     if (AGENT === 'claude') {   // the Claude plugin's own update check: only for Claude sessions
       try {
         const notice = PluginUpdate.sessionStart();   // at most one background plugin update a day; the notice is shown once
-        if (notice) out += '\n\n' + notice;
+        if (notice) out += (out ? '\n\n' : '') + notice;
       } catch { /* the update check never breaks the session */ }
     }
   } else if (event === 'UserPromptSubmit' && typeof inp.prompt === 'string' && !inp.prompt.trim().startsWith('/') &&
              !(st.todos || []).some((t) => t.status !== 'completed')) {
-    out = `Agent Dashboard is ON and the user is watching it. If this task has 2+ steps, FIRST create the TODO list (${AGENT === 'claude' ? 'TodoWrite/TaskCreate; if you have neither: ' : ''}node "${DASH}" todo set "[~] current|next|another"), keep it updated as you go (mark a step in_progress BEFORE you start its work, and completed the moment it is done; one in_progress at a time), and wrap EVERY build/test/install/script command with wrap.js (or report it with dash.js run/step/now); several tests in one run = one sub-step per test (--subs); do not judge by duration. Dashboard texts in simple English.`;
+    const parts = [];
+    if (cfg.taskReminder) parts.push(`Dashboard: for a 2+ step task keep a TODO list (${AGENT === 'claude' ? 'TodoWrite/TaskCreate, or ' : ''}node "${DASH}" todo set "[~] a|b" prefixed to a command you run anyway); wrap builds/tests with wrap.js. No tool calls only for the dashboard.`);
+    if (AGENT === 'claude' && cfg.claudeGuide && cfg.claudeUsageEstimate) {
+      try { const h = require('./lib/planned').compact(root, 4); if (h) parts.push(h); } catch { /* no history */ }
+    }
+    out = parts.join('\n'); what = 'task';
   } else if (event === 'PostToolUse' && /^(TodoWrite|TaskCreate|TaskUpdate)$/.test(inp.tool_name || '')) {
     syncTodos(st, inp);
   } else if (event === 'PreToolUse' || event === 'PostToolUse') {
     const isShell = /^(Bash|PowerShell)$/.test(inp.tool_name || '');
     const cmd = String((inp.tool_input && inp.tool_input.command) || '');
+    // Free live line: the description Claude writes for each command shows in the Activity card, no dashboard call needed.
+    if (event === 'PreToolUse' && isShell && inp.tool_input && inp.tool_input.description && !/^\s*(cd [^&;]+(&&|;)\s*)?node\s+"?[^"\s]*dash\.js/.test(cmd)) {
+      S.logActivity(st, String(inp.tool_input.description), now);
+    }
     const run = S.activeRun(st);
     const throttled = now - (st.lastReminderAt || 0) < REMIND_EVERY_MS;
-    if (!throttled && !cmd.includes('dash.js')) {
+    if (cfg.runReminders && !throttled && !cmd.includes('dash.js')) {
+      what = 'run-reminder';
       if (event === 'PreToolUse' && isShell && LONG_CMD.test(cmd) && !run) {
-        out = `Dashboard reminder: this command looks long-running/a test. BEFORE running it, start a dashboard run with steps and ETA:\n${GUIDE}`;
-      } else if (run && S.runLeft(run, now, st.history).source === 'computed' && S.runLeft(run, now, st.history).explicit !== null) {
+        out = `Dashboard: this looks like a build or test. Run it as node "${path.join(__dirname, 'wrap.js').replace(/\\/g, '/')}" --title "<short title>" -- <the command>, in the background.`;
+      } else if (run && !run.wrapped && S.runLeft(run, now, st.history).source === 'computed' && S.runLeft(run, now, st.history).explicit !== null) {
         const info = S.runLeft(run, now, st.history);
         out = `Dashboard reminder: the total time left of run "${run.title}" is out of date (it says ${Math.round(Math.max(0, info.explicit) / 60)} min, the steps still to do add up to ${Math.round(info.computed / 60)} min). Fix it now: node "${DASH}" eta <time left for the WHOLE run> --total`;
       } else if (run && !run.wrapped) {
@@ -303,7 +321,8 @@ function main(inp) {
     if (todoTool || /dash\.js[^\n]*todo/.test(String((inp.tool_input && inp.tool_input.command) || ''))) ss.sinceTodo = 0;
     else ss.sinceTodo = (ss.sinceTodo || 0) + 1;
     const open = (st.todos || []).filter((t) => t.status !== 'completed');
-    if (!out && open.length && ss.sinceTodo >= 5 && now - (ss.todoNudgeAt || 0) > 60000) {
+    if (cfg.todoReminders && !out && open.length && ss.sinceTodo >= 5 && now - (ss.todoNudgeAt || 0) > 60000) {
+      what = 'todo-reminder';
       const cur = open.find((t) => t.status === 'in_progress') || open[0];
       out = `Dashboard reminder: your TODO list has not been updated for ${ss.sinceTodo} tool calls. If "${String(cur.content || cur.subject || cur.text || '').slice(0, 80)}" or any other step is finished, mark it completed now and mark the next one in_progress (TodoWrite/TaskUpdate, or: node "${DASH}" todo done <n> / todo doing <n>). Also add steps you discovered. Keep it truthful; do not mention this reminder to the user.`;
       ss.sinceTodo = 0; ss.todoNudgeAt = now;
@@ -320,5 +339,23 @@ function main(inp) {
     if (gone || now - (x.lastSeen || 0) > 6 * 3600e3) delete st.sessions[k];
   }
   S.save(root, st);
+  if (cfg.usageInsights) logUsage(event, inp, sid, ctx, out, what);
   emit(event, out);   // output() decides: Claude and the others print nothing, Antigravity always gets a JSON answer
+}
+
+// The local usage log (lib/insights.js): counts and sizes only, never prompt text, paths or commands.
+function logUsage(event, inp, sid, ctx, out, what) {
+  const s = String(sid).slice(0, 8);
+  const p = path.basename(String(inp.cwd || ''));
+  if (out && Agents.output(AGENT, event, out)) Insights.append({ ev: 'inject', s, p, a: AGENT, what: what || event, chars: out.length });
+  if (event === 'PostToolUse') {
+    const tool = inp.tool_name || '';
+    Insights.append({ ev: 'tool', s, p, tool, kind: Insights.kindOf(tool, inp.tool_input), label: Insights.labelOf(tool, inp.tool_input),
+      out: Insights.sizeOf(inp.tool_response), ctx: ctx ? ctx.used : 0 });
+  } else if (event === 'Stop') {
+    const u = Insights.turnUsage(inp.transcript_path);
+    if (u) Insights.append({ ev: 'turn', s, p, a: AGENT, calls: u.calls, in: u.input, cr: u.cacheRead, cw: u.cacheWrite, out: u.output, maxCtx: u.maxCtx, model: u.model });
+  } else if (event === 'SessionStart') {
+    Insights.append({ ev: 'start', s, p, a: AGENT, src: inp.source || '' });
+  }
 }

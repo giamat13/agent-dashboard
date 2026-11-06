@@ -596,6 +596,14 @@
     ['showProviders', 'Codex and Copilot limits card', 'The limits of Codex and GitHub Copilot, for paid plans.'],
     ['showHistory', 'Run history card', 'The runs that finished earlier.'],
     ['showOutput', 'Output card', 'The last lines a build or test printed, with the pass and fail counts.'],
+    // Each of these costs Claude usage. Off = cheaper.
+    ['claudeGuide', 'Instructions for Claude (uses a little usage)', 'Short dashboard instructions at the start of each Claude session. Off: Claude does not know about the dashboard, the TODO list still shows.'],
+    ['detailedUpdates', 'Detailed updates by Claude (uses a lot of usage)', 'Claude reports every step, sub-step and time left by hand. Each report is one more Claude call.'],
+    ['taskReminder', 'Reminder with every task (uses usage)', 'Adds a reminder about the TODO list to every new task you send.'],
+    ['todoReminders', 'TODO reminders (uses usage)', 'Reminds Claude when the TODO list was not updated for a while. Each reminder makes Claude spend calls.'],
+    ['runReminders', 'Run reminders (uses usage)', 'Reminds Claude before long commands and when the time left of a run is out of date.'],
+    ['claudeUsageEstimate', 'Claude estimates planned usage (uses a little usage)', 'Claude sets how much of the limits each task will use, from a short list of past tasks.'],
+    ['usageInsights', 'Usage log (free)', 'Keeps a local log of what costs usage, in ~/.agent-dashboard. Never sent anywhere. Claude reads it to make the dashboard cheaper.'],
   ];
   function settingsHtml() {
     if (!settingsOpen || !settings) return '';

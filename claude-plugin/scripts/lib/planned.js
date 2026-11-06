@@ -79,4 +79,13 @@ function history(folder, n) {
   return lines.join('\n');
 }
 
-module.exports = { FILE, DIR, read, write, set, history, points };
+// One short line for the hook to add to a new task, so Claude can set its estimate without a separate "plan history" call.
+function compact(folder, n) {
+  const last = read(folder).records.slice(-(n || 4));
+  const short = (e) => (e ? (typeof e.five === 'number' ? e.five : '?') + '/' + (typeof e.weekly === 'number' ? e.weekly : '?') : '-');
+  if (!last.length) return 'Planned usage: no past tasks yet; estimate from the size of the TODO list.';
+  return 'Planned usage, past tasks (items, minutes, used 5h/weekly points, your estimate): ' +
+    last.map((r) => (r.items || 0) + ' items ' + Math.round((r.secs || 0) / 60) + 'm used ' + short(r) + ' est ' + short(r.estimate)).join('; ') + '.';
+}
+
+module.exports = { FILE, DIR, read, write, set, history, compact, points };

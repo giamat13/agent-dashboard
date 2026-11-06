@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0
+- Much cheaper in Claude usage. The session-start instructions are about 10 times shorter, and they tell Claude never to make a tool call only for the dashboard (dashboard commands go in front of a command Claude runs anyway).
+- The reminders are off by default: the reminder with every task, the TODO reminder after 5 tool calls, and the run reminders (the one before long commands used to repeat all the instructions).
+- Planned usage costs one short line with the task instead of a `plan history` call.
+- `dash.js todo done <n>` also starts the next item. The live line comes by itself from the description of each command.
+- New switches in Settings for everything that costs usage: claudeGuide, detailedUpdates (the old long instructions), taskReminder, todoReminders, runReminders, claudeUsageEstimate, usageInsights.
+- A local usage log, `~/.agent-dashboard/usage-insights.jsonl`: tokens per turn, tool calls by kind, calls made only for the dashboard, the biggest outputs and the text the hooks added. No prompt text, paths or commands, and never sent anywhere. `dash.js insights` prints a short report of it.
+- The skill loads only when you ask about the dashboard.
+
 ## 0.4.22
 - Claude picks the planned usage of each task itself. Before the first item goes in_progress, it reads the finished tasks with `dash.js plan history` (their TODO items, the share of the 5-hour and weekly limits each used, and the estimate that was set) and sets its estimate with `dash.js plan set --five <points> --weekly <points> --why "<reason>"`. The usage card shows it as the dashed line, marked "estimate by Claude". A window Claude leaves out uses the median of the last finished tasks, as before.
 - Each finished task is recorded with its TODO items and the estimate that was set for it.

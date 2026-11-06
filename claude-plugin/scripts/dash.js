@@ -99,7 +99,7 @@ switch (cmd) {
       ensureStep(run);
       log(run, 'Started: ' + title);
       st.runs.push(run);
-      console.log('Run started. Next: step start 1 --plain "..." --eta 5m. Keep the total time left true: eta <time> --total');
+      console.log('Run started');
     } else if (sub === 'done' || sub === 'fail') {
       const r = need();
       const s = curStep(r);
@@ -267,9 +267,23 @@ switch (cmd) {
       if (!t) die('No such TODO: ' + arg);
       t.status = sub === 'doing' ? 'in_progress' : sub === 'done' ? 'completed' : 'pending';
       if (t.status === 'in_progress') t.startedAt = now; else if (t.status === 'completed') { t.endedAt = now; if (!t.startedAt) t.startedAt = now; }
+      // "done" also starts the next item, so one command does what two did (fewer calls, less usage).
+      if (sub === 'done' && !st.todos.some((x) => x.status === 'in_progress')) {
+        const nx = st.todos.find((x) => x.status === 'pending');
+        if (nx) { nx.status = 'in_progress'; nx.startedAt = now; }
+      }
     } else if (sub === 'clear') { st.todos = []; }
     else die('Usage: todo set "a|[~] b|[x] c" | todo doing|done|pending <n> | todo clear');
-    console.log('TODOs: ' + st.todos.map((t) => `${t.id}.[${t.status}] ${t.content}`).join(' ; '));
+    const doing = st.todos.find((t) => t.status === 'in_progress');
+    console.log('TODO ' + st.todos.filter((t) => t.status === 'completed').length + '/' + st.todos.length + ' done' + (doing ? ', now ' + doing.id : ''));
+    break;
+  }
+  case 'insights': {
+    // The local usage log, as a short report: what cost Claude usage (dash.js insights [--days 7] [--json]).
+    const Insights = require('./lib/insights');
+    const days = Number(flags.days) || 0;
+    if (flags.json) console.log(JSON.stringify(Insights.readAll(days ? now - days * 864e5 : 0)));
+    else console.log(Insights.report(days, Settings.read()));
     break;
   }
   case 'settings': {

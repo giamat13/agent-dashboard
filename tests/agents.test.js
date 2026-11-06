@@ -62,6 +62,15 @@ try {
   assert.ok(!gCodex.includes("usage (Claude's"), 'no Claude-only commands');
   console.log('ok - instructions per agent');
 
+  // The short instructions (the default) stay short and never ask for tool calls made only for the dashboard.
+  const lean = A.leanGuideText(SCRIPTS, 'claude', { estimate: true });
+  assert.ok(lean.length < 1200, 'short guide is ' + lean.length + ' chars');
+  assert.ok(lean.length * 3 < gClaude.length, 'much shorter than the long one');
+  assert.ok(/NEVER make a tool call only to update the dashboard/.test(lean) && lean.includes('plan set'));
+  assert.ok(!A.leanGuideText(SCRIPTS, 'claude').includes('plan set'), 'no estimate line when the switch is off');
+  assert.ok(!A.leanGuideText(SCRIPTS, 'codex').includes('TodoWrite'));
+  console.log('ok - short instructions');
+
   // Setup files: valid JSON, one command per event, with the agent and the event in the command.
   const codexCfg = JSON.parse(JSON.stringify(A.hookConfig('codex', SCRIPTS)));
   assert.ok(codexCfg.hooks.SessionStart[0].hooks[0].command.endsWith('--agent codex --event SessionStart'));

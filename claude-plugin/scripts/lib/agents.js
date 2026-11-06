@@ -77,6 +77,22 @@ function output(agent, event, text) {
 }
 
 // The instructions every agent gets at the start of a session. Claude also has TodoWrite; the others keep the list with dash.js.
+// The short instructions (the default): about 150 tokens instead of 1,500, and no tool calls spent only on the dashboard.
+// The hooks fill in the rest by themselves (TODO sync, the live line from each command's description, wrap.js progress).
+function leanGuideText(scriptsDir, agent, opts) {
+  const DASH = path.join(scriptsDir, 'dash.js').replace(/\\/g, '/');
+  const WRAP = path.join(scriptsDir, 'wrap.js').replace(/\\/g, '/');
+  const claude = agent === 'claude';
+  const todo = claude
+    ? 'For 2+ step tasks keep a TODO list with TodoWrite/TaskCreate if you have them (they sync by themselves). Otherwise'
+    : 'For 2+ step tasks';
+  return `Agent Dashboard is ON (VS Code). Keep it cheap: NEVER make a tool call only to update the dashboard.
+${todo} prefix a command you run anyway: node "${DASH}" todo set "[~] a|b|c" && <cmd>; later todo done <n> / todo doing <n> the same way.
+Builds, tests, installs: node "${WRAP}" --title "<short title>" -- <cmd> (progress and time are automatic).${opts && opts.estimate ? `
+Once per task with 2+ steps, prefix your first command with node "${DASH}" plan set --five <points> --weekly <points> --why "<reason>" (share of the 5-hour/weekly limit the task will use; past tasks are listed with the task).` : ''}
+Dashboard texts in simple English.`;
+}
+
 function guideText(scriptsDir, agent) {
   const DASH = path.join(scriptsDir, 'dash.js').replace(/\\/g, '/');
   const WRAP = path.join(scriptsDir, 'wrap.js').replace(/\\/g, '/');
@@ -132,7 +148,7 @@ function hookConfig(agent, scriptsDir) {
 // The text for dash.js agent-setup: what to save where. Nothing is written by the dashboard.
 function setupText(agent, scriptsDir) {
   const json = JSON.stringify(hookConfig(agent, scriptsDir), null, 2);
-  const guide = guideText(scriptsDir, agent);
+  const guide = leanGuideText(scriptsDir, agent);   // the short text: it is read by the agent in every session, so it must stay cheap
   if (agent === 'antigravity') {
     return [
       '1) Merge the "agent-dashboard" block below into ~/.gemini/config/hooks.json (keep your own hooks). That file is shared by the Antigravity app, CLI and IDE.',
@@ -157,4 +173,4 @@ function setupText(agent, scriptsDir) {
   ].join('\n');
 }
 
-module.exports = { AGENTS, CONTEXT_EVENTS, SETUP_EVENTS, COPILOT_EVENTS, parseArgs, normalize, output, guideText, hookConfig, setupText };
+module.exports = { AGENTS, CONTEXT_EVENTS, SETUP_EVENTS, COPILOT_EVENTS, parseArgs, normalize, output, guideText, leanGuideText, hookConfig, setupText };
