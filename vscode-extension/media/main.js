@@ -59,12 +59,13 @@
     if (!list.length) return S;
     if (sel === ALL && list.length > 1) {
       const groups = list.map((x, i) => ({ id: x.id, agent: x.agent || 'claude', title: x.title || ('Session ' + (list.length - i)), goal: x.goal || null, context: x.context || null, todos: x.todos || [] }));
-      return Object.assign({}, S, { todos: [].concat(...groups.map((g) => g.todos)), goal: null, context: null, curSession: ALL, groups, runs: S.runs || [] });
+      return Object.assign({}, S, { todos: [].concat(...groups.map((g) => g.todos)), goal: null, context: null, curSession: ALL, groups, runs: S.runs || [], shots: [] });
     }
     const cur = list.find((x) => x.id === sel) || list.find((x) => x.id === S.session) || list[0];
     return Object.assign({}, S, {
       todos: cur.todos || [], goal: cur.goal || null, context: cur.context || null, curSession: cur.id, curAgent: cur.agent || 'claude', groups: null,
       runs: (S.runs || []).filter((r) => !r.session || r.session === cur.id),
+      shots: cur.shots || [],   // only the pictures of this session
     });
   }
   // Icon of the agent that runs a session: Claude, Codex or GitHub Copilot (Claude when unknown).
@@ -484,8 +485,8 @@
     return h + '</div>';
   }
 
-  function contextHtml(c) {
-    let h = '<div class="card"><h3>Agent memory in this chat</h3>';
+  function contextHtml(c, sessionId) {
+    let h = '<div class="card"><div class="cardh"><h3>Agent memory in this chat</h3></div>';
     if (!c) return '';
     const color = c.percent >= 85 ? 'var(--bad)' : c.percent >= 60 ? 'var(--warn)' : 'var(--ok)';
     const hint = c.percent >= 95 ? 'Claude is about to compact the chat automatically (it summarizes and small details are forgotten).' : c.percent >= 85 ? 'Close to auto-compact. Consider summarizing or starting a new chat.' : c.percent >= 60 ? 'Filling up. Soon it is worth summarizing.' : 'Plenty of room.';
@@ -531,14 +532,15 @@
     const start = t.start, est = t.est, x = u && u[key];
     if (!start || typeof start[key] !== 'number' || !x || typeof x.pct !== 'number') return null;
     if (!est || typeof est[key] !== 'number') return { width: 0, text: 'no data yet' };
-    const used = Math.max(0, x.pct - start[key]);
-    const width = Math.min(Math.max(0, est[key] - used), Math.max(0, 100 - x.pct));
     const n = est.n || 0;
     const what = est.kind === 'average' ? 'average of ' + n + (n === 1 ? ' task' : ' tasks') : n + (n === 1 ? ' similar task' : ' similar tasks');
     const model = est.sameModel === false ? 'other model' : esc(String(est.model || ''));
     // The text is the expected share of the limit when the task reaches 100%: where it started, plus the estimate.
+    // The striped part runs from the current share up to that same point, so the bar and the text always agree
+    // (also when the limit reset during the task and the current share is below where it started).
     const at100 = Math.min(100, start[key] + est[key]);
-    return { width, text: 'planned at 100%: ~' + Math.round(at100) + '% (' + what + (model ? ', ' + model : '') + ')' + (start.stale ? ', limits read earlier' : '') };
+    const width = Math.max(0, at100 - x.pct);
+    return { width, text:'planned at 100%: ~' + Math.round(at100) + '% (' + what + (model ? ', ' + model : '') + ')' + (start.stale ? ', limits read earlier' : '') };
   }
   // The whole task that is open and has usage numbers, the newest one (of this session or any other session).
   function plannedOf(state) {
@@ -648,13 +650,13 @@
       h += tabsHtml(list, V.curSession, now);
       if (V.goal && V.goal.text && /[\p{L}\p{N}]/u.test(V.goal.text)) h += '<div class="goal"><span class="gk">🎯 Goal</span><span class="gt">' + esc(V.goal.text) + '</span></div>';
       h += freshHtml(run, now) + tilesHtml(V, run, now) + otherRunsHtml(V, run, now) + pipelineHtml(run, now);
-      h += '<div class="cols"><div class="col">' + (isOn('showActivity', true) ? activityHtml(V, run, now) : '') + shotsHtml(S, now) + (isOn('showTasks', true) ? tasksHtml(V, run, now) : '') + '</div>' +
+      h += '<div class="cols"><div class="col">' + (isOn('showActivity', true) ? activityHtml(V, run, now) : '') + shotsHtml(V, now) + (isOn('showTasks', true) ? tasksHtml(V, run, now) : '') + '</div>' +
         '<div class="col">' + (isOn('showJobs', true) ? jobsHtml(run, now) : '') + (isOn('showOutput', false) ? outputHtml(run) : '') + '</div>' +
-        '<div class="col">' + (isOn('showUsage', true) ? usageHtml(usage, now, plannedOf(S), !settings || settings.usageEstimate !== false, usageCompact) : '') + (isOn('showProviders', true) ? providersHtml(providers, now) : '') + (isOn('showContext', true) ? (V.groups ? allContextHtml(V.groups) : contextHtml(V.context)) : '') + (isOn('showHistory', true) ? historyHtml(runs, run, now, V.groups) : '') + '</div></div>';
+        '<div class="col">' + (isOn('showUsage', true) ? usageHtml(usage, now, plannedOf(S), !settings || settings.usageEstimate !== false, usageCompact) : '') + (isOn('showProviders', true) ? providersHtml(providers, now) : '') + (isOn('showContext', true) ? (V.groups ? allContextHtml(V.groups) : contextHtml(V.context, V.curSession)) : '') + (isOn('showHistory', true) ? historyHtml(runs, run, now, V.groups) : '') + '</div></div>';
       h += '<div class="foot">Updated ' + hhmm(S.updatedAt) + '</div>';
     }
     if (S && fullShot !== null) {
-      const f = (S.shots || []).find((s) => s && s.src && s.at === fullShot);
+      const f = ((V && V.shots) || []).find((s) => s && s.src && s.at === fullShot);
       if (f) h += '<div class="fullshot" title="Click or press Esc to close"><img src="' + esc(f.src) + '" alt="' + esc(f.name || 'screenshot') + '"></div>';
     }
     if (h !== last) { last = h; app.innerHTML = h; }

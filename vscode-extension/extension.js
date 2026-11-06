@@ -192,14 +192,18 @@ function broadcast(force) {
   }
 }
 
-// The pictures Claude read (state.shots, files in <folder>/.agent-dashboard/shots): each gets an address this webview may load.
-// The folders are allowed in wire(); the file list itself is only ever the shots the hook wrote.
+// The pictures Claude read, per session (sessions[id].shots, files in <folder>/.agent-dashboard/shots): each gets an address
+// this webview may load. The folders are allowed in wire(); the file list itself is only ever the shots the hook wrote.
 function withShotUris(w, state, folder) {
-  if (!state || !Array.isArray(state.shots) || !state.shots.length || !folder) return state;
-  const shots = state.shots.map((s) => Object.assign({}, s, {
+  if (!state || !state.sessions || !folder) return state;
+  const uri = (s) => Object.assign({}, s, {
     src: String(w.asWebviewUri(vscode.Uri.file(path.join(folder, '.agent-dashboard', String(s.file || ''))))),
-  }));
-  return Object.assign({}, state, { shots });
+  });
+  const sessions = {};
+  for (const [id, x] of Object.entries(state.sessions)) {
+    sessions[id] = x && Array.isArray(x.shots) && x.shots.length ? Object.assign({}, x, { shots: x.shots.map(uri) }) : x;
+  }
+  return Object.assign({}, state, { sessions });
 }
 
 function html(webview) {

@@ -16,9 +16,9 @@ try {
   // Defaults: fifteen switches; the screenshots and Output switches are off, the others on, and the two copies of the list agree.
   assert.strictEqual(Object.keys(plugin.DEFAULTS).length, 16);
   assert.strictEqual(plugin.DEFAULTS.showScreenshots, false);
-  assert.strictEqual(plugin.DEFAULTS.screenshotsFullscreen, false);
+  assert.strictEqual(plugin.DEFAULTS.screenshotsFullscreen, true);
   assert.strictEqual(plugin.DEFAULTS.showOutput, false);
-  assert.ok(Object.entries(plugin.DEFAULTS).filter(([k]) => !['showScreenshots', 'screenshotsFullscreen', 'showOutput'].includes(k)).every(([, v]) => v === true));
+  assert.ok(Object.entries(plugin.DEFAULTS).filter(([k]) => !['showScreenshots', 'showOutput'].includes(k)).every(([, v]) => v === true));
   assert.deepStrictEqual(ext.DEFAULTS, plugin.DEFAULTS);
   assert.ok(!fs.existsSync(fileOf()));
   assert.deepStrictEqual(plugin.read(), plugin.DEFAULTS);

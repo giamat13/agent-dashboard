@@ -13,7 +13,7 @@ const DEFAULTS = {
   extensionAutoUpdate: true,  // the VS Code extension updates itself from GitHub Releases
   pluginAutoUpdate: true,     // the Claude plugin updates itself, at most once a day
   showScreenshots: false,     // show the PNG/JPG files Claude reads (copies in .agent-dashboard/shots); off by default
-  screenshotsFullscreen: false, // a click on a screenshot opens it over the whole dashboard; off by default
+  screenshotsFullscreen: true,  // a click on a screenshot opens it over the whole dashboard; on by default
   showActivity: true,         // the Activity card
   showTasks: true,            // the Agent tasks card
   showJobs: true,             // the Parallel jobs card

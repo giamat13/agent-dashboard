@@ -1,6 +1,6 @@
 {
   "name": "agent-dashboard",
-  "version": "0.4.11",
+  "version": "0.4.19",
   "description": "Reports to the VS Code dashboard: to-dos, context, and steps with estimated time for long scripts.",
   "author": { "name": "GIAMAT13" },
   "homepage": "https://github.com/GIAMAT13/agent-dashboard",

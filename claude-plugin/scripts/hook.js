@@ -250,6 +250,7 @@ function main(inp) {
   const prevTodos = (ss.todos || []).map((t) => Object.assign({}, t));
   st.todos = ss.todos || []; st.goal = ss.goal || null; st.context = ss.context || null; st.todoSync = ss.todoSync;
   st.usageTask = ss.usageTask || null;   // the planned task of this session (lib/usage.js)
+  st.shots = ss.shots || [];             // the pictures this session read (captureShot), never the other sessions'
   const ctx = readContext(inp.transcript_path, inp.cwd);
   if (ctx) st.context = ctx;
   st.session = sid;
@@ -316,7 +317,7 @@ function main(inp) {
 
   if (!ss.title && event === 'UserPromptSubmit' && typeof inp.prompt === 'string' && !inp.prompt.trim().startsWith('/')) ss.title = inp.prompt.trim().replace(/\s+/g, ' ').slice(0, 40);
   stampTodos(st, st.todos, prevTodos, now, AGENT === 'claude' ? Settings.read() : OFF_USAGE);
-  Object.assign(ss, { todos: st.todos, goal: st.goal, context: st.context, todoSync: st.todoSync, usageTask: st.usageTask, lastSeen: now, cwd: inp.cwd, transcript: inp.transcript_path || ss.transcript });
+  Object.assign(ss, { todos: st.todos, goal: st.goal, context: st.context, todoSync: st.todoSync, usageTask: st.usageTask, shots: st.shots, lastSeen: now, cwd: inp.cwd, transcript: inp.transcript_path || ss.transcript });
   for (const k of Object.keys(st.sessions)) {
     const x = st.sessions[k];
     if (k === sid) continue;

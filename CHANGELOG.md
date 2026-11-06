@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.4.19
+- The COMPACT CHAT button is removed, with its request file and the plugin module that only served it. Sessions no longer poll for compact requests.
+
+## 0.4.18
+- The COMPACT CHAT messages and tooltip are in English again, like the rest of the dashboard.
+
+## 0.4.17
+- The COMPACT CHAT messages and tooltip are in Hebrew.
+
+## 0.4.16
+- COMPACT CHAT runs `/compact` in its chat by itself, as the context dashboard does. The button writes a request into the project's `.agent-dashboard` folder; the Agent Dashboard plugin in that chat (`hooks/register.ts`) runs `/compact` once the chat is free and writes the result back. Needs the plugin updated (`claude plugin update agent-dashboard@agent-dashboard`) and a Reload Window.
+
+## 0.4.15
+- COMPACT CHAT opens this chat with `/compact` already typed in, instead of copying it. The Claude extension cannot send a message from outside, so press Enter once to run it.
+
+## 0.4.14
+- Agent memory card: a COMPACT CHAT button. It copies `/compact` and opens the Claude chat. VS Code cannot type into the chat for the dashboard, so paste it there (Ctrl+V) and press Enter.
+
+## 0.4.13
+- Screenshots Claude read are kept per session: the Screenshots card shows only the pictures of the session on screen, never those of another session. The all-sessions tab shows no screenshots.
+
+## 0.4.12
+- The striped planned part on the usage bar now ends at the same point as the "planned at 100%" text. Before, it could show a much shorter part when a limit reset during the task.
+- Screenshots open full screen when clicked, by default. Turn "Screenshots full screen" off in the settings to enlarge a picture inside its card, as before.
+
 ## 0.4.11
 - Planned usage covers the whole task: the whole TODO list, from its first item in progress until every item is completed. One estimate and one record per task, not per item. Similar tasks are matched on the text of the whole list.
 - Progress ring on a TODO list counts the whole list: finished items, plus the item in progress with the progress of its running script. Without a TODO list it shows the script's steps, as before.
