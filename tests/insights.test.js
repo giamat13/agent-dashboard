@@ -45,8 +45,9 @@ try {
   let r = hook({ hook_event_name: 'UserPromptSubmit', session_id: 's1', cwd: project, prompt: 'Fix the bug', transcript_path: tr });
   assert.strictEqual(r.status, 0, r.stderr);
   const ctx = r.stdout ? JSON.parse(r.stdout).hookSpecificOutput.additionalContext : '';
-  assert.ok(!/^Dashboard:/m.test(ctx) && /Planned usage/.test(ctx), 'no task reminder by default, only the planned-usage line');
-  assert.ok(ctx.length < 300, 'only the short planned-usage line: ' + ctx.length);
+  assert.strictEqual(ctx, '', 'no task reminder by default, and no planned-usage line without past tasks');
+  r = hook({ hook_event_name: 'SessionStart', session_id: 's1', cwd: project, source: 'resume', transcript_path: tr });
+  assert.ok(!/Agent Dashboard is ON/.test(r.stdout), 'no guide again for a resumed chat');
   for (let i = 0; i < 7; i++) {
     r = hook({ hook_event_name: 'PostToolUse', session_id: 's1', cwd: project, tool_name: 'Bash', tool_input: { command: 'npm run secret-thing' }, tool_response: 'ok', transcript_path: tr });
     assert.strictEqual(r.stdout, '', 'no TODO reminder by default');
@@ -59,6 +60,8 @@ try {
   assert.strictEqual(recs.filter((x) => x.ev === 'turn').length, 1);
   const rep = I.report(0, { claudeGuide: true, todoReminders: false });
   assert.ok(/1 turns, 2 model calls/.test(rep) && /shell 7/.test(rep) && /todoReminders=off/.test(rep), rep);
+  assert.ok(/Context before any work/.test(rep) && /MCP servers that were used: none/.test(rep), rep);
+  assert.strictEqual(I.labelOf('Skill', { skill: 'pdf' }), 'pdf');
   console.log('ok - hook: cheap defaults, and a log without prompt or command text');
 
   // The switch turns the log off.

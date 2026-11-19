@@ -46,6 +46,8 @@ function labelOf(tool, input) {
     return path.basename(w.replace(/["']/g, '')).slice(0, 20);
   }
   if (i.file_path) return (path.extname(String(i.file_path)) || 'file').slice(0, 10);
+  if (tool === 'Skill' && i.skill) return String(i.skill).slice(0, 40);              // which skills are used at all
+  if (tool === 'Agent') return String(i.subagent_type || 'general').slice(0, 30);   // which agent types are started
   return '';
 }
 
@@ -134,8 +136,25 @@ function report(days, settings) {
   const byWhat = {};
   for (const r of inj) { const x = byWhat[r.what] || (byWhat[r.what] = { n: 0, chars: 0 }); x.n++; x.chars += r.chars || 0; }
   L.push('Text the hooks added to Claude\'s context (count, chars): ' + (Object.keys(byWhat).length ? Object.entries(byWhat).map(([w, x]) => w + ' ' + x.n + ' (' + k(x.chars) + ')').join(' · ') : 'none'));
+  // The context before any work (the first tool call of each session): tools, connectors, skill lists and instructions.
+  const firstCtx = {};
+  for (const r of tools) if (r.ctx && !(r.s in firstCtx)) firstCtx[r.s] = r.ctx;
+  const base = Object.values(firstCtx).sort((a, b) => a - b);
+  const baseMed = base.length ? base[Math.floor(base.length / 2)] : 0;
+  if (baseMed) L.push('Context before any work (median of sessions): ' + k(baseMed) + ' tokens, re-read by every call (' + pc(baseMed * T.calls, T.cr + T.cw + T.in) + ' of all context read).');
+  const mcp = {};
+  for (const r of tools) if (/^mcp__/.test(r.tool)) { const sv = r.tool.split('__')[1]; mcp[sv] = (mcp[sv] || 0) + 1; }
+  L.push('MCP servers that were used: ' + (Object.keys(mcp).length ? Object.entries(mcp).sort((a, b) => b[1] - a[1]).map(([sv, n]) => sv + ' ' + n).join(' · ') : 'none') + '. All others only add their tool lists to the context.');
+  const skills = {};
+  for (const r of tools) if ((r.tool === 'Skill' || r.tool === 'Agent') && r.label) skills[r.tool + ':' + r.label] = (skills[r.tool + ':' + r.label] || 0) + 1;
+  if (Object.keys(skills).length) L.push('Skills and agents used: ' + Object.entries(skills).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([s, n]) => s + ' ' + n).join(' · '));
+  const starts = all.filter((r) => r.ev === 'start');
+  const compacts = starts.filter((r) => r.src === 'compact').length;
+  const images = tools.filter((r) => /^\.(png|jpe?g|gif|webp)$/i.test(r.label || '')).length;
+  L.push('Compactions: ' + compacts + ' · pictures read: ' + images + ' · sessions started: ' + starts.length);
   const dashOnly = byKind.dash || { n: 0, ctx: 0 };
   const hints = [];
+  if (baseMed > 80000) hints.push('the context before any work is ' + k(baseMed) + ': unused connectors, MCP servers and plugins with many skills cost the most');
   if (dashOnly.n && dashOnly.ctx / Math.max(1, totCtx) > 0.03) hints.push('calls made only for the dashboard are ' + pc(dashOnly.ctx, totCtx) + ' of the re-read context: make the hooks do more, or turn off more instructions');
   const polls = byKind['read-bg-output'];
   if (polls && polls.n > tools.length * 0.1) hints.push('many reads of background output files (' + polls.n + '): wait for the finish notice instead');

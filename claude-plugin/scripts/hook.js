@@ -268,7 +268,8 @@ function main(inp) {
   const cfg = Settings.read();
   let what = '';   // the kind of text added to Claude's context, for the usage log
   if (event === 'SessionStart') {
-    out = guideFor(cfg); what = 'guide';
+    // A resumed chat already holds the guide from its first start: adding it again only costs usage.
+    out = inp.source === 'resume' ? '' : guideFor(cfg); what = 'guide';
     if (AGENT === 'claude') {   // the Claude plugin's own update check: only for Claude sessions
       try {
         const notice = PluginUpdate.sessionStart();   // at most one background plugin update a day; the notice is shown once

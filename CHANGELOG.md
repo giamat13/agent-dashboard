@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.1
+- From two weeks of the usage log: the dashboard itself was about 3% of the usage, so this trims what is left of it.
+- No planned-usage line on a new task when there are no past tasks to compare with (it was added about 600 times with nothing in it). With past tasks it is shorter.
+- The session guide writes the scripts folder once instead of three times, and a resumed chat does not get the guide again.
+- `dash.js insights` also shows the context before any work (the tools, connectors and skill lists every call re-reads), which MCP servers were used at all, which skills and agents were used, and how many compactions and pictures there were.
+
 ## 0.5.0
 - Much cheaper in Claude usage. The session-start instructions are about 10 times shorter, and they tell Claude never to make a tool call only for the dashboard (dashboard commands go in front of a command Claude runs anyway).
 - The reminders are off by default: the reminder with every task, the TODO reminder after 5 tool calls, and the run reminders (the one before long commands used to repeat all the instructions).

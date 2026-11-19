@@ -80,16 +80,16 @@ function output(agent, event, text) {
 // The short instructions (the default): about 150 tokens instead of 1,500, and no tool calls spent only on the dashboard.
 // The hooks fill in the rest by themselves (TODO sync, the live line from each command's description, wrap.js progress).
 function leanGuideText(scriptsDir, agent, opts) {
-  const DASH = path.join(scriptsDir, 'dash.js').replace(/\\/g, '/');
-  const WRAP = path.join(scriptsDir, 'wrap.js').replace(/\\/g, '/');
+  const DIR = scriptsDir.replace(/\\/g, '/');
   const claude = agent === 'claude';
   const todo = claude
     ? 'For 2+ step tasks keep a TODO list with TodoWrite/TaskCreate if you have them (they sync by themselves). Otherwise'
     : 'For 2+ step tasks';
-  return `Agent Dashboard is ON (VS Code). Keep it cheap: NEVER make a tool call only to update the dashboard.
-${todo} prefix a command you run anyway: node "${DASH}" todo set "[~] a|b|c" && <cmd>; later todo done <n> / todo doing <n> the same way.
-Builds, tests, installs: node "${WRAP}" --title "<short title>" -- <cmd> (progress and time are automatic).${opts && opts.estimate ? `
-Once per task with 2+ steps, prefix your first command with node "${DASH}" plan set --five <points> --weekly <points> --why "<reason>" (share of the 5-hour/weekly limit the task will use; past tasks are listed with the task).` : ''}
+  // One path, written once: D below stands for it (about 150 characters less in every session).
+  return `Agent Dashboard is ON (VS Code). Keep it cheap: NEVER make a tool call only to update the dashboard. D = ${DIR}
+${todo} prefix a command you run anyway: node "D/dash.js" todo set "[~] a|b|c" && <cmd>; later todo done <n> (starts the next one) the same way.
+Builds, tests, installs: node "D/wrap.js" --title "<short title>" -- <cmd> (progress and time are automatic).${opts && opts.estimate ? `
+Once per task with 2+ steps, prefix your first command with node "D/dash.js" plan set --five <points> --weekly <points> --why "<reason>" (share of the 5-hour/weekly limit it will use).` : ''}
 Dashboard texts in simple English.`;
 }
 
